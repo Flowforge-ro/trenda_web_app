@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Button } from "@/components/ui/button";
+import { Button } from "../components/ui/button";
 
 async function fetchHealthCheck() {
   const res = await fetch("http://localhost:3000/health");
