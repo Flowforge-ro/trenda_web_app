@@ -10,7 +10,6 @@ interface User {
 async function fetchMe(): Promise<User> {
   const res = await fetch(`${API_BASE}/auth/me`, {
     credentials: "include",
-    headers: { "ngrok-skip-browser-warning": "1" },
   });
   if (!res.ok) throw new Error("Not authenticated");
   return res.json();

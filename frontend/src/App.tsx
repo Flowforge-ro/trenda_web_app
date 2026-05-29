@@ -1,12 +1,15 @@
+import type { ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { useAuth } from "./lib/auth";
 import { LoginPage } from "./pages/login";
-import { HomePage } from "./pages/home";
+import { OrdersPage } from "./pages/orders";
+import { PlaceholderPage } from "./pages/placeholder";
+import { AppLayout } from "./components/layout/app-layout";
 
 const queryClient = new QueryClient();
 
-function AuthGuard({ children }: { children: React.ReactNode }) {
+function AuthGuard({ children }: { children: ReactNode }) {
   const { data: user, isLoading, error } = useAuth();
 
   if (isLoading) {
@@ -31,15 +34,18 @@ function App() {
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route
-            path="/*"
             element={
               <AuthGuard>
-                <Routes>
-                  <Route path="/" element={<HomePage />} />
-                </Routes>
+                <AppLayout />
               </AuthGuard>
             }
-          />
+          >
+            <Route path="/" element={<OrdersPage />} />
+            <Route path="/piese" element={<PlaceholderPage title="Piese" />} />
+            <Route path="/clienti" element={<PlaceholderPage title="Clienți" />} />
+            <Route path="/rapoarte" element={<PlaceholderPage title="Rapoarte" />} />
+            <Route path="/setari" element={<PlaceholderPage title="Setări" />} />
+          </Route>
         </Routes>
       </BrowserRouter>
     </QueryClientProvider>
