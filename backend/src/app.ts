@@ -36,6 +36,7 @@ await app.register(secureSession, {
 await app.register(fastifyOauth2, {
   name: "microsoftOAuth2",
   scope: process.env.MICROSOFT_SCOPES!.split(" "),
+  pkce: "S256",
   credentials: {
     client: {
       id: process.env.ENTRA_CLIENT_ID!,

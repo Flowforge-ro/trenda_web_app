@@ -29,6 +29,8 @@ test("GET /auth/microsoft redirects to the tenant-specific authorize URL", async
   assert.match(location, /client_id=test-client-id/);
   assert.match(location, /redirect_uri=/);
   assert.match(location, /scope=/);
+  assert.match(location, /code_challenge=/, "authorize URL must carry a PKCE code_challenge");
+  assert.match(location, /code_challenge_method=S256/, "authorize URL must use the S256 PKCE method");
 
   await app.close();
 });
