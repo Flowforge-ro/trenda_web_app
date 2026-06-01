@@ -13,6 +13,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { useCreateOrder } from "@/lib/orders";
 
 interface NewOrderForm {
   emailFurnizor: string;
@@ -29,6 +30,7 @@ const emptyForm: NewOrderForm = {
 export function NewOrderDialog() {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<NewOrderForm>(emptyForm);
+  const createOrder = useCreateOrder();
 
   function update<K extends keyof NewOrderForm>(key: K, value: string) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -36,10 +38,15 @@ export function NewOrderDialog() {
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    // TODO: wire to backend once the create-order endpoint exists.
-    console.log("Comandă nouă:", form);
-    setForm(emptyForm);
-    setOpen(false);
+    createOrder.mutate(form, {
+      onSuccess: ({ emailSent }) => {
+        if (!emailSent) {
+          alert("Comanda a fost salvată, dar emailul nu a putut fi trimis.");
+        }
+        setForm(emptyForm);
+        setOpen(false);
+      },
+    });
   }
 
   return (
@@ -91,11 +98,18 @@ export function NewOrderDialog() {
             </div>
           </div>
 
+          {createOrder.isError && (
+            <p className="text-sm text-error">
+              Crearea comenzii a eșuat. Încearcă din nou.
+            </p>
+          )}
           <DialogFooter>
             <DialogClose render={<Button type="button" variant="outline" />}>
               Anulează
             </DialogClose>
-            <Button type="submit">Trimite</Button>
+            <Button type="submit" disabled={createOrder.isPending}>
+              {createOrder.isPending ? "Se trimite..." : "Trimite"}
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>

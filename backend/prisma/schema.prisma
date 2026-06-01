@@ -15,4 +15,21 @@ model User {
   encryptedRefreshToken String?
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
+  orders                Order[]
+}
+
+model Order {
+  id                String   @id @default(cuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id])
+  emailFurnizor     String
+  serieSasiu        String
+  piesa             String
+  status            String   @default("În așteptare")
+  numarComanda      String?
+  timpLivrare       String?
+  internetMessageId String?
+  emailStatus       String   @default("trimis")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 }

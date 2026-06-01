@@ -5,6 +5,7 @@ import secureSession from "@fastify/secure-session";
 import fastifyOauth2 from "@fastify/oauth2";
 import { healthRoutes } from "./system/health/health.js";
 import { authRoutes } from "./system/auth/auth.routes.js";
+import { ordersRoutes } from "./modules/orders/orders.routes.js";
 
 const isProd = process.env.NODE_ENV === "production";
 
@@ -61,5 +62,6 @@ await app.register(fastifyOauth2, {
 
 await app.register(healthRoutes);
 await app.register(authRoutes);
+await app.register(ordersRoutes);
 
 export { app };
