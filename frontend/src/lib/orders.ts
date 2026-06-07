@@ -142,7 +142,8 @@ export function useOrderReview(id: string, enabled: boolean) {
 }
 
 export function attachmentUrl(orderId: string, attachmentId: string): string {
-  return `${API_BASE}/orders/${orderId}/attachments/${attachmentId}`;
+  // Graph attachment ids can contain URL-special chars; encode the path segment.
+  return `${API_BASE}/orders/${orderId}/attachments/${encodeURIComponent(attachmentId)}`;
 }
 
 async function saveReview(args: { id: string; payload: SaveReviewPayload }): Promise<{ order: Order }> {
@@ -160,6 +161,9 @@ export function useSaveReview() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: saveReview,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["orders"] }),
+    onSuccess: (_data, { id }) => {
+      qc.invalidateQueries({ queryKey: ["orders"] });
+      qc.invalidateQueries({ queryKey: ["order-review", id] });
+    },
   });
 }
