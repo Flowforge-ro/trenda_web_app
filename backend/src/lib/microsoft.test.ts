@@ -5,7 +5,7 @@ process.env.ENTRA_TENANT_ID ??= "test-tenant";
 process.env.ENTRA_CLIENT_ID ??= "test-client-id";
 process.env.ENTRA_CLIENT_SECRET_VALUE ??= "test-secret";
 
-import { getAccessTokenFromRefreshToken, createAndSendMail, listMessagesSince, listFileAttachments } from "./microsoft.js";
+import { getAccessTokenFromRefreshToken, createAndSendMail, listMessagesSince, listFileAttachments, listAttachmentMeta, getAttachmentBytes } from "./microsoft.js";
 
 afterEach(() => mock.restoreAll());
 
@@ -151,4 +151,56 @@ test("listFileAttachments returns every file attachment, base64-decoded", async 
 test("listFileAttachments throws on HTTP error", async () => {
   mock.method(globalThis, "fetch", async () => new Response("nope", { status: 404 }));
   await assert.rejects(() => listFileAttachments("AT", "MSG1"), /list attachments failed/i);
+});
+
+test("listAttachmentMeta returns metadata without content bytes", async () => {
+  const fetchMock = mock.method(globalThis, "fetch", async () =>
+    new Response(
+      JSON.stringify({
+        value: [
+          { id: "A1", name: "po.pdf", contentType: "application/pdf", size: 1234 },
+          { id: "A2", name: null, contentType: null },
+        ],
+      }),
+      { status: 200 }
+    )
+  );
+
+  const result = await listAttachmentMeta("AT", "MSG1");
+
+  assert.deepEqual(result, [
+    { id: "A1", name: "po.pdf", contentType: "application/pdf", size: 1234 },
+    { id: "A2", name: "attachment", contentType: null, size: null },
+  ]);
+  const url = fetchMock.mock.calls[0].arguments[0] as string;
+  assert.ok(url.includes("/me/messages/MSG1/attachments"), `url was ${url}`);
+  assert.ok(new URL(url).searchParams.has("$select"), `expected $select param in ${url}`);
+});
+
+test("listAttachmentMeta throws on HTTP error", async () => {
+  mock.method(globalThis, "fetch", async () => new Response("nope", { status: 500 }));
+  await assert.rejects(() => listAttachmentMeta("AT", "MSG1"), /list attachment meta failed/i);
+});
+
+test("getAttachmentBytes decodes base64 content", async () => {
+  const b64 = Buffer.from("hello").toString("base64");
+  mock.method(globalThis, "fetch", async () =>
+    new Response(
+      JSON.stringify({ name: "po.pdf", contentType: "application/pdf", contentBytes: b64 }),
+      { status: 200 }
+    )
+  );
+
+  const result = await getAttachmentBytes("AT", "MSG1", "A1");
+
+  assert.equal(result.name, "po.pdf");
+  assert.equal(result.contentType, "application/pdf");
+  assert.equal(Buffer.from(result.bytes).toString(), "hello");
+});
+
+test("getAttachmentBytes throws when no content bytes", async () => {
+  mock.method(globalThis, "fetch", async () =>
+    new Response(JSON.stringify({ name: "x", contentType: "text/plain" }), { status: 200 })
+  );
+  await assert.rejects(() => getAttachmentBytes("AT", "MSG1", "A1"), /no content bytes/i);
 });

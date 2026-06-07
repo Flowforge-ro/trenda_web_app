@@ -198,3 +198,65 @@ export async function listFileAttachments(
   }
   return files;
 }
+
+const graphAttachmentMetaSchema = z.object({
+  id: z.string(),
+  name: z.string().nullable().optional(),
+  contentType: z.string().nullable().optional(),
+  size: z.number().nullable().optional(),
+});
+
+const graphAttachmentMetaResponseSchema = z.object({
+  value: z.array(graphAttachmentMetaSchema),
+});
+
+export interface AttachmentMeta {
+  id: string;
+  name: string;
+  contentType: string | null;
+  size: number | null;
+}
+
+export async function listAttachmentMeta(
+  accessToken: string,
+  messageId: string
+): Promise<AttachmentMeta[]> {
+  const select = encodeURIComponent("id,name,contentType,size");
+  const res = await fetch(
+    `https://graph.microsoft.com/v1.0/me/messages/${messageId}/attachments?$select=${select}`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  if (!res.ok) {
+    throw new Error(`Graph list attachment meta failed: ${res.status} ${await res.text()}`);
+  }
+  const { value } = graphAttachmentMetaResponseSchema.parse(await res.json());
+  return value.map((a) => ({
+    id: a.id,
+    name: a.name ?? "attachment",
+    contentType: a.contentType ?? null,
+    size: a.size ?? null,
+  }));
+}
+
+export async function getAttachmentBytes(
+  accessToken: string,
+  messageId: string,
+  attachmentId: string
+): Promise<FileAttachment> {
+  const res = await fetch(
+    `https://graph.microsoft.com/v1.0/me/messages/${messageId}/attachments/${attachmentId}`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  if (!res.ok) {
+    throw new Error(`Graph get attachment failed: ${res.status} ${await res.text()}`);
+  }
+  const att = graphAttachmentSchema.parse(await res.json());
+  if (!att.contentBytes) {
+    throw new Error("Graph attachment has no content bytes");
+  }
+  return {
+    name: att.name ?? "attachment",
+    contentType: att.contentType ?? null,
+    bytes: new Uint8Array(Buffer.from(att.contentBytes, "base64")),
+  };
+}
