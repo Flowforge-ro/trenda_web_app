@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { getOrderReview, type ReviewDeps } from "./review.service.js";
+import { getOrderReview, getReviewAttachment, type ReviewDeps } from "./review.service.js";
 
 const reply = {
   graphMessageId: "MSG1",
@@ -83,4 +83,33 @@ test("getOrderReview skips Graph when the reply has no attachments", async () =>
   const result = await getOrderReview("U1", "O1", deps);
   assert.deepEqual(result!.attachments, []);
   assert.equal(called, false);
+});
+
+test("getReviewAttachment returns bytes for the owner", async () => {
+  const deps = makeDeps({
+    getAttachmentBytes: async (_t, msgId, attId) => ({
+      name: `${msgId}-${attId}.pdf`,
+      contentType: "application/pdf",
+      bytes: new Uint8Array([1, 2, 3]),
+    }),
+  });
+  const result = await getReviewAttachment("U1", "O1", "A1", deps);
+  assert.ok(result);
+  assert.equal(result!.name, "MSG1-A1.pdf");
+  assert.equal(result!.bytes.length, 3);
+});
+
+test("getReviewAttachment returns null for a non-owner", async () => {
+  const result = await getReviewAttachment("U2", "O1", "A1", makeDeps());
+  assert.equal(result, null);
+});
+
+test("getReviewAttachment returns null when Graph fetch throws", async () => {
+  const deps = makeDeps({
+    getAttachmentBytes: async () => {
+      throw new Error("graph 404");
+    },
+  });
+  const result = await getReviewAttachment("U1", "O1", "A1", deps);
+  assert.equal(result, null);
 });

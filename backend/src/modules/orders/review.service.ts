@@ -63,6 +63,26 @@ export interface OrderReviewResult {
   };
 }
 
+export async function getReviewAttachment(
+  userId: string,
+  orderId: string,
+  attachmentId: string,
+  deps: ReviewDeps = defaultDeps
+): Promise<FileAttachment | null> {
+  const order = await deps.prisma.order.findFirst({
+    where: { id: orderId, userId },
+    ...latestReplyArgs,
+  });
+  if (!order || order.replies.length === 0) return null;
+  const token = await resolveToken(userId, deps);
+  if (!token) return null;
+  try {
+    return await deps.getAttachmentBytes(token, order.replies[0].graphMessageId, attachmentId);
+  } catch {
+    return null;
+  }
+}
+
 export async function getOrderReview(
   userId: string,
   orderId: string,
