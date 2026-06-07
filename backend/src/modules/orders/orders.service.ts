@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { prisma } from "../../prisma.js";
 import { decrypt, encrypt } from "../../lib/crypto.js";
 import {
@@ -7,11 +8,13 @@ import {
 import { renderStatusRequest } from "../../lib/template.js";
 import type { Order } from "../../generated/prisma/client.js";
 
-export interface OrderInput {
-  emailFurnizor: string;
-  serieSasiu: string;
-  piesa: string;
-}
+export const orderInputSchema = z.object({
+  emailFurnizor: z.string().email(),
+  serieSasiu: z.string().min(1),
+  piesa: z.string().min(1),
+});
+
+export type OrderInput = z.infer<typeof orderInputSchema>;
 
 export interface OrderDeps {
   prisma: typeof prisma;
@@ -30,7 +33,6 @@ const defaultDeps: OrderDeps = {
   createAndSendMail,
   renderStatusRequest,
 };
-
 
 export async function createOrder(
   userId: string,

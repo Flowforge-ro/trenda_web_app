@@ -9,6 +9,9 @@ export interface Order {
   status: string;
   numarComanda: string | null;
   timpLivrare: string | null;
+  deliveryEarliest: string | null;
+  deliveryLatest: string | null;
+  replyStatus: string;
   emailStatus: string;
   createdAt: string;
 }
@@ -60,6 +63,31 @@ export function useResendOrder() {
     mutationFn: resendOrder,
     onSuccess: () => qc.invalidateQueries({ queryKey: ["orders"] }),
   });
+}
+
+function daysUntil(iso: string, now: Date): number {
+  const target = new Date(iso);
+  const startOfDay = (d: Date) => Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+  return Math.round((startOfDay(target) - startOfDay(now)) / 86_400_000);
+}
+
+/** Human countdown to delivery, in Romanian. Returns "—" when no dates are known. */
+export function formatDeliveryCountdown(
+  earliest: string | null,
+  latest: string | null,
+  now: Date = new Date()
+): string {
+  if (!earliest || !latest) return "—";
+  const de = daysUntil(earliest, now);
+  const dl = daysUntil(latest, now);
+  if (de === dl) {
+    if (de < 0) return "întârziat";
+    if (de === 0) return "azi";
+    if (de === 1) return "mâine";
+    return `${de} zile`;
+  }
+  if (dl < 0) return "întârziat";
+  return `în ${Math.max(de, 0)}–${dl} zile`;
 }
 
 export function useCreateOrder() {

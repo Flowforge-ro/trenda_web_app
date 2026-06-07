@@ -3,30 +3,20 @@ import {
   createOrder,
   listOrders,
   resendOrderEmail,
-  type OrderInput,
+  orderInputSchema,
 } from "./orders.service.js";
-
-function isValid(body: unknown): body is OrderInput {
-  if (typeof body !== "object" || body === null) return false;
-  const b = body as Record<string, unknown>;
-  return (
-    typeof b.emailFurnizor === "string" &&
-    /.+@.+\..+/.test(b.emailFurnizor) &&
-    typeof b.serieSasiu === "string" &&
-    b.serieSasiu.length > 0 &&
-    typeof b.piesa === "string" &&
-    b.piesa.length > 0
-  );
-}
 
 export const ordersRoutes: FastifyPluginAsync = async (app) => {
   app.post("/orders", async (request, reply) => {
     const userId = request.session.get("userId");
     if (!userId) return reply.status(401).send({ error: "Not authenticated" });
-    if (!isValid(request.body)) {
-      return reply.status(400).send({ error: "Invalid order payload" });
+    const parsed = orderInputSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply
+        .status(400)
+        .send({ error: "Invalid order payload", details: parsed.error.flatten() });
     }
-    const result = await createOrder(userId, request.body);
+    const result = await createOrder(userId, parsed.data);
     return reply.status(201).send(result);
   });
 

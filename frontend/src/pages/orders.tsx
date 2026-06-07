@@ -10,7 +10,7 @@ import { NewOrderDialog } from "@/components/orders/new-order-dialog";
 import { cn } from "@/lib/utils";
 import { RotateCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useOrders, useResendOrder, type Order } from "@/lib/orders";
+import { useOrders, useResendOrder, formatDeliveryCountdown, type Order } from "@/lib/orders";
 
 const statusStyles: Record<string, string> = {
   "Livrat": "bg-success/10 text-success",
@@ -34,13 +34,26 @@ function StatusBadge({ status }: { status: string }) {
 
 function StatusCell({ order }: { order: Order }) {
   const resend = useResendOrder();
+  const reviewBadge =
+    order.replyStatus === "needs_review" ? (
+      <span className="inline-flex items-center rounded-full bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning">
+        verifică
+      </span>
+    ) : null;
+
   if (order.emailStatus === "trimis") {
-    return <StatusBadge status={order.status} />;
+    return (
+      <div className="flex items-center gap-2">
+        <StatusBadge status={order.status} />
+        {reviewBadge}
+      </div>
+    );
   }
   const failed = order.emailStatus === "esuat";
   return (
     <div className="flex items-center gap-2">
       <StatusBadge status={order.status} />
+      {reviewBadge}
       <span
         className={cn(
           "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
@@ -114,8 +127,10 @@ export function OrdersPage() {
                   <TableCell className="px-4 py-3">
                     <StatusCell order={o} />
                   </TableCell>
-                  <TableCell className="px-4 py-3 text-foreground">
-                    {o.timpLivrare ?? "—"}
+                  <TableCell className="px-4 py-3 text-foreground" title={o.timpLivrare ?? undefined}>
+                    {o.deliveryEarliest && o.deliveryLatest
+                      ? formatDeliveryCountdown(o.deliveryEarliest, o.deliveryLatest)
+                      : o.timpLivrare ?? "—"}
                   </TableCell>
                 </TableRow>
               ))

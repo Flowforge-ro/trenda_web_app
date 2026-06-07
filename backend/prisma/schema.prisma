@@ -15,6 +15,7 @@ model User {
   encryptedRefreshToken String?
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
+  lastPolledAt          DateTime?
   orders                Order[]
 }
 
@@ -28,8 +29,27 @@ model Order {
   status            String   @default("În așteptare")
   numarComanda      String?
   timpLivrare       String?
-  internetMessageId String?
+  deliveryEarliest  DateTime?
+  deliveryLatest      DateTime?
+  statusRequestSentAt DateTime?
+  internetMessageId   String?
   emailStatus       String   @default("trimis")
+  replyStatus       String   @default("awaiting_reply")
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
+  replies           OrderReply[]
+}
+
+model OrderReply {
+  id                String   @id @default(cuid())
+  orderId           String
+  order             Order    @relation(fields: [orderId], references: [id])
+  graphMessageId    String   @unique
+  internetMessageId String?
+  fromEmail         String
+  subject           String?
+  receivedDateTime  DateTime
+  hasAttachments    Boolean  @default(false)
+  body              String?
+  createdAt         DateTime @default(now())
 }

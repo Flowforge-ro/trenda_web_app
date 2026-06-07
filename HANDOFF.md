@@ -1,16 +1,18 @@
 # HANDOFF — Trenda vendor-email automation
 
-_Updated: 2026-06-01. Branch: `feat/new-order-email`._
+_Updated: 2026-06-01 (Phases 2 & 3 + status-request email shipped). Branch: `feat/new-order-email`._
 
-> Read `docs/project-status.md` first for the full goal + 3-phase roadmap. This file
+> Read `docs/project-status.md` first for the full goal + current state. This file
 > is the "how to pick it up tomorrow" companion. The older `claude_handoff.md` is
 > superseded by these two — ignore it.
 
 ## Goal (one line)
 Automate supplier part-ordering email: send a request, then poll for the human-written
 reply and extract **order number** (`numarComanda`) + **delivery date** (`timpLivrare`)
-from unstructured text / PDFs / JPGs. **Phase 1 (send) is done.** Phases 2 (poll) and
-3 (extract) are not started.
+from unstructured text. **Phase 1 (send), Phase 2 (poll), Phase 3 (extract, body-only),
+and the 1-day-before-delivery "Status?" nudge are all implemented** and pass tests. The
+remaining gap is operational: **one Prisma migration is deferred** until the DB is up
+(see "Outstanding" below). Attachment/PDF/OCR extraction is not started.
 
 ## Current progress
 
@@ -23,8 +25,37 @@ from unstructured text / PDFs / JPGs. **Phase 1 (send) is done.** Phases 2 (poll
 - Order survives send failure: `emailStatus` `in_curs` → `trimis` / `esuat`.
 - Failed/stuck orders show a badge + **Retrimite** resend button in the table;
   backend `POST /orders/:id/resend` (ownership-guarded).
-- Backend tests: **16/16 pass** (`cd backend && npm test`). Backend `tsc --noEmit`
+- Backend tests: **59/59 pass** (`cd backend && npm test`). Backend `tsc --noEmit`
   clean. Frontend `tsc -b` clean.
+
+### ✅ Done since (Phases 2–3 + status nudge — NOT yet verified live)
+- **Phase 2 — poll** (`backend/src/modules/poll/`): in-process 5-min `setInterval`
+  (`poll.worker.ts`, re-entrancy guard) → `pollReplies` = **ingest → extract → status**.
+  Ingest fetches mail since `User.lastPolledAt` (−2 min overlap) via
+  `listMessagesSince`, matches replies by `In-Reply-To`/`References` header vs stored
+  `internetMessageId`, saves an `OrderReply` + flips `replyStatus` to `reply_received`
+  (atomic). Header-only match; dedup by `OrderReply.graphMessageId` unique.
+- **Phase 3 — extract** (`lib/extraction.ts`): **Gemini Flash** (`@google/genai`,
+  `GOOGLE_LLM_API_KEY`, JSON `responseSchema`) over reply **body**, with an **attachment
+  vision fallback**. Extract phase processes every `reply_received` order → writes
+  `numarComanda` + verbatim `timpLivrare` + normalized `deliveryEarliest`/`deliveryLatest`;
+  status → `extracted` or `needs_review`; LLM failure stays `reply_received` (retry).
+  **Logprob confidence was removed** — now trusts model null/non-null + ISO-date
+  validation. Frontend shows a delivery countdown + `needs_review` badge.
+- **Attachment vision fallback:** when the body pass is `needs_review` and the reply has
+  attachments, the extract phase fetches them (`microsoft.ts → listFileAttachments`) and
+  sends each supported one — **PDF, JPEG, PNG** (PDFs first) — to Gemini as an inline
+  document/image part, via a `text`|`binary` source strategy in `extraction.ts`, filling
+  only the missing fields (`mergeMissing`) until both are found. Gemini OCRs scanned PDFs
+  and photos itself — no OCR/rasterizer dep. Needs a Graph token (so the extract phase
+  does `getUserAccessToken` per user). Spec:
+  `docs/superpowers/specs/2026-06-01-image-attachment-extraction-design.md` (supersedes the
+  earlier `unpdf` PDF spec).
+- **Status nudge:** the status phase emails a one-time **"Status?"** to `emailFurnizor`
+  when `deliveryEarliest` ≤ 1 day out, tracked by `Order.statusRequestSentAt`.
+- Specs/plans for all three under `docs/superpowers/{specs,plans}/2026-06-01-*`.
+- Token-refresh extracted into a shared `getUserAccessToken` helper in `poll.service.ts`.
+- **Not yet exercised against a live mailbox / live Gemini call** (DB was down; see below).
 
 ### Uncommitted — NOTHING IS COMMITTED (by user's standing convention)
 The user commits everything themselves. Do **not** run `git add`/`git commit`/git
@@ -65,20 +96,24 @@ The entire Phase-1 E2E 401 saga was an **account/tenant problem, not code**:
   (pre-licensed mailboxes; `onmicrosoft.com` is fine). See
   `memory: graph-mail-needs-licensed-member`. **All `[DEBUG]` logging has been removed.**
 
-## Next steps (Phase 2 — poll for replies, every 5 min)
-1. **Brainstorm first** (use `superpowers:brainstorming`) — real open questions to
-   settle: per-user vs per-mailbox polling; Graph **delta query vs `receivedDateTime`
-   filter**; cursor/state storage so replies aren't reprocessed; webhook subscriptions
-   as a later optimization vs simple polling now.
-2. **Reply→order matching:** primary = stored `Order.internetMessageId` vs the reply's
-   `In-Reply-To`/`References` headers. Fallback (subject has `serieSasiu` + sender ==
-   `emailFurnizor`) TBD.
-3. **Fetch:** Graph `GET /me/messages` (+ attachments). `Mail.Read` already granted.
-4. **Order state:** add a reply-status field/flow (`awaiting_reply` → `reply_received`
-   → `extracted`); store last-polled cursor.
-5. Then **Phase 3** (extraction): LLM over body/PDF text, OCR→LLM for JPGs, write back
-   `numarComanda`/`timpLivrare`. Degrade gracefully — null + flag-for-review if not
-   confident; never guess. 
+## ⚠ Outstanding (do this first when picking up)
+1. **Deferred Prisma migration** — the DB at `localhost:5433` was down throughout
+   implementation, so `schema.prisma` + the generated client are ahead of the DB. Start
+   Postgres, then from `backend/`: `npx prisma migrate dev --name reply_polling_delivery_status`.
+   It must create columns for `User.lastPolledAt`, `Order.replyStatus`,
+   `Order.deliveryEarliest`/`deliveryLatest`, `Order.statusRequestSentAt`, and the
+   `OrderReply` table. **Until this runs, every poll/extract/status DB op fails at
+   runtime** (code typechecks/tests pass because they use the regenerated client + fakes).
+2. **Live verification** (none done yet): with a licensed mailbox signed in and the DB
+   migrated, confirm a real reply gets ingested → extracted, and that a Gemini call works
+   with `GOOGLE_LLM_API_KEY` + model `gemini-3.5-flash` (set in `lib/extraction.ts` —
+   confirm that model id is valid for the key; swap if not). The poll interval in
+   `poll.worker.ts` may currently be set to a long dev value — check before relying on it.
+
+## Next steps (candidates, not started)
+- Manual-correction UI for `needs_review` orders (no write endpoint yet).
+- Re-ingest supplier **correction** replies (an order past `awaiting_reply` isn't re-matched).
+- Fallback reply matching (sender + `serieSasiu`) if header threading proves unreliable.
 
 ## Quick reference
 - Run app: `npm run dev` (root) → backend + frontend; UI at **`http://localhost:5173`**
@@ -90,6 +125,10 @@ The entire Phase-1 E2E 401 saga was an **account/tenant problem, not code**:
 - Backend is ESM: local imports use `.js` specifiers even for `.ts` files.
 - Project convention (CLAUDE.md): be terse; prefer the `code-review-graph` MCP tools
   over Grep/Glob when exploring.
-- Key files: `backend/src/lib/microsoft.ts`, `backend/src/modules/orders/*`,
+- Key files: `backend/src/lib/microsoft.ts` (Graph: token, `createAndSendMail`,
+  `listMessagesSince`, `listFileAttachments`), `backend/src/lib/extraction.ts` (Gemini
+  text|binary source strategy + `mergeMissing`),
+  `backend/src/modules/poll/*` (`poll.service.ts` ingest/extract/status phases +
+  `supportedMime`, `matching.ts`, `poll.worker.ts`), `backend/src/modules/orders/*`,
   `backend/src/lib/template.ts`, `frontend/src/lib/orders.ts`,
-  `frontend/src/pages/orders.tsx`, `backend/prisma/schema.prisma` (`Order`).
+  `frontend/src/pages/orders.tsx`, `backend/prisma/schema.prisma` (`Order`, `OrderReply`).
