@@ -7,6 +7,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { NewOrderDialog } from "@/components/orders/new-order-dialog";
+import { OrderReviewDialog } from "@/components/orders/order-review-dialog";
 import { cn } from "@/lib/utils";
 import { RotateCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -35,11 +36,7 @@ function StatusBadge({ status }: { status: string }) {
 function StatusCell({ order }: { order: Order }) {
   const resend = useResendOrder();
   const reviewBadge =
-    order.replyStatus === "needs_review" ? (
-      <span className="inline-flex items-center rounded-full bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning">
-        verifică
-      </span>
-    ) : null;
+    order.replyStatus === "needs_review" ? <OrderReviewDialog order={order} /> : null;
 
   if (order.emailStatus === "trimis") {
     return (
