@@ -97,3 +97,69 @@ export function useCreateOrder() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["orders"] }),
   });
 }
+
+export interface ReviewAttachment {
+  id: string;
+  name: string;
+  contentType: string | null;
+  size: number | null;
+}
+
+export interface OrderReview {
+  reply: {
+    fromEmail: string;
+    subject: string | null;
+    receivedDateTime: string;
+    body: string | null;
+  };
+  attachments: ReviewAttachment[];
+  current: {
+    numarComanda: string | null;
+    timpLivrare: string | null;
+    deliveryEarliest: string | null;
+    deliveryLatest: string | null;
+  };
+}
+
+export interface SaveReviewPayload {
+  numarComanda?: string | null;
+  deliveryEarliest?: string | null;
+  deliveryLatest?: string | null;
+}
+
+async function fetchOrderReview(id: string): Promise<OrderReview> {
+  const res = await fetch(`${API_BASE}/orders/${id}/review`, { credentials: "include" });
+  if (!res.ok) throw new Error("Nu s-a putut încărca răspunsul");
+  return res.json();
+}
+
+export function useOrderReview(id: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ["order-review", id],
+    queryFn: () => fetchOrderReview(id),
+    enabled,
+  });
+}
+
+export function attachmentUrl(orderId: string, attachmentId: string): string {
+  return `${API_BASE}/orders/${orderId}/attachments/${attachmentId}`;
+}
+
+async function saveReview(args: { id: string; payload: SaveReviewPayload }): Promise<{ order: Order }> {
+  const res = await fetch(`${API_BASE}/orders/${args.id}/review`, {
+    method: "PATCH",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(args.payload),
+  });
+  if (!res.ok) throw new Error("Salvarea a eșuat");
+  return res.json();
+}
+
+export function useSaveReview() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: saveReview,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["orders"] }),
+  });
+}
