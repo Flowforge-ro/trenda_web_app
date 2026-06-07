@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { prisma } from "../../prisma.js";
 import { decrypt, encrypt } from "../../lib/crypto.js";
 import {
@@ -81,6 +82,46 @@ export async function getReviewAttachment(
   } catch {
     return null;
   }
+}
+
+const dateStr = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "expected YYYY-MM-DD");
+
+export const reviewSaveSchema = z
+  .object({
+    numarComanda: z.string().trim().min(1).nullish(),
+    deliveryEarliest: dateStr.nullish(),
+    deliveryLatest: dateStr.nullish(),
+  })
+  .refine(
+    (d) => !d.deliveryEarliest || !d.deliveryLatest || d.deliveryEarliest <= d.deliveryLatest,
+    { message: "deliveryEarliest must be on or before deliveryLatest" }
+  );
+
+export type ReviewSaveInput = z.infer<typeof reviewSaveSchema>;
+
+export async function saveOrderReview(
+  userId: string,
+  orderId: string,
+  input: ReviewSaveInput,
+  deps: ReviewDeps = defaultDeps
+) {
+  const order = await deps.prisma.order.findFirst({ where: { id: orderId, userId } });
+  if (!order) return null;
+
+  let earliest = input.deliveryEarliest ?? null;
+  let latest = input.deliveryLatest ?? null;
+  if (earliest && !latest) latest = earliest;
+  if (latest && !earliest) earliest = latest;
+
+  return deps.prisma.order.update({
+    where: { id: orderId },
+    data: {
+      numarComanda: input.numarComanda ?? undefined,
+      deliveryEarliest: earliest ? new Date(earliest) : undefined,
+      deliveryLatest: latest ? new Date(latest) : undefined,
+      replyStatus: "extracted",
+    },
+  });
 }
 
 export async function getOrderReview(

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { getOrderReview, getReviewAttachment, type ReviewDeps } from "./review.service.js";
+import { getOrderReview, getReviewAttachment, saveOrderReview, reviewSaveSchema, type ReviewDeps } from "./review.service.js";
 
 const reply = {
   graphMessageId: "MSG1",
@@ -111,5 +111,53 @@ test("getReviewAttachment returns null when Graph fetch throws", async () => {
     },
   });
   const result = await getReviewAttachment("U1", "O1", "A1", deps);
+  assert.equal(result, null);
+});
+
+test("reviewSaveSchema rejects earliest later than latest", () => {
+  const r = reviewSaveSchema.safeParse({
+    deliveryEarliest: "2026-06-10",
+    deliveryLatest: "2026-06-05",
+  });
+  assert.equal(r.success, false);
+});
+
+test("reviewSaveSchema rejects a non-date string", () => {
+  const r = reviewSaveSchema.safeParse({ deliveryEarliest: "soon" });
+  assert.equal(r.success, false);
+});
+
+test("reviewSaveSchema accepts order number with no dates", () => {
+  const r = reviewSaveSchema.safeParse({ numarComanda: "C-123" });
+  assert.equal(r.success, true);
+});
+
+test("saveOrderReview sets fields, mirrors a single date, and clears needs_review", async () => {
+  let updateData: any;
+  const deps = makeDeps();
+  deps.prisma.order.update = (async ({ data }: any) => {
+    updateData = data;
+    return { id: "O1", ...data };
+  }) as any;
+
+  const result = await saveOrderReview(
+    "U1",
+    "O1",
+    { numarComanda: "C-123", deliveryEarliest: "2026-06-10" },
+    deps
+  );
+
+  assert.ok(result);
+  assert.equal(updateData.numarComanda, "C-123");
+  assert.equal(updateData.replyStatus, "extracted");
+  assert.deepEqual(updateData.deliveryEarliest, new Date("2026-06-10"));
+  assert.deepEqual(updateData.deliveryLatest, new Date("2026-06-10"));
+});
+
+test("saveOrderReview returns null for a non-owner", async () => {
+  const deps = makeDeps();
+  deps.prisma.order.findFirst = (async ({ where }: any) =>
+    where.userId === "U1" ? { id: "O1", userId: "U1" } : null) as any;
+  const result = await saveOrderReview("U2", "O1", { numarComanda: "C-1" }, deps);
   assert.equal(result, null);
 });
