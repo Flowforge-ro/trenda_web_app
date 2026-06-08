@@ -1,62 +1,38 @@
 import type { FastifyPluginAsync } from "fastify";
+import { z } from "zod";
+import { authenticate } from "./login.service.js";
+import { loadSessionUser, type SessionUser } from "../../lib/auth-context.js";
 import { prisma } from "../../prisma.js";
-import { encrypt } from "../../lib/crypto.js";
-import { getGraphUser } from "../../lib/microsoft.js";
+
+const loginSchema = z.object({ email: z.string().email(), password: z.string().min(1) });
+
+async function mePayload(user: SessionUser) {
+  const org = user.orgId
+    ? await prisma.organization.findUnique({
+        where: { id: user.orgId },
+        select: { id: true, name: true },
+      })
+    : null;
+  return { id: user.id, email: user.email, name: user.name, role: user.role, org };
+}
 
 export const authRoutes: FastifyPluginAsync = async (app) => {
-  app.get<{
-    Querystring: { code?: string; state?: string; error?: string };
-  }>("/auth/microsoft/callback", async (request, reply) => {
-    const { error } = request.query;
-    if (error) {
-      return reply.status(400).send({ error });
-    }
-
-    const { token } =
-      await app.microsoftOAuth2.getAccessTokenFromAuthorizationCodeFlow(request);
-
-    if (!token.refresh_token) {
-      return reply
-        .status(500)
-        .send({ error: "No refresh token returned (check offline_access scope)" });
-    }
-
-    const graphUser = await getGraphUser(token.access_token);
-
-    const user = await prisma.user.upsert({
-      where: { microsoftId: graphUser.id },
-      update: {
-        email: graphUser.mail || graphUser.userPrincipalName,
-        name: graphUser.displayName,
-        encryptedRefreshToken: encrypt(token.refresh_token),
-      },
-      create: {
-        microsoftId: graphUser.id,
-        email: graphUser.mail || graphUser.userPrincipalName,
-        name: graphUser.displayName,
-        encryptedRefreshToken: encrypt(token.refresh_token),
-      },
-    });
-
+  app.post("/auth/login", async (request, reply) => {
+    const parsed = loginSchema.safeParse(request.body);
+    if (!parsed.success) return reply.status(400).send({ error: "Invalid payload" });
+    const user = await authenticate(parsed.data.email, parsed.data.password);
+    if (!user) return reply.status(401).send({ error: "Invalid credentials" });
     request.session.set("userId", user.id);
-    return reply.redirect("http://localhost:5173");
+    return mePayload(user);
   });
 
   app.get("/auth/me", async (request, reply) => {
-    const userId = request.session.get("userId");
-    console.log(userId);
-    if (!userId) {
-      return reply.status(401).send({ error: "Not authenticated" });
-    }
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { id: true, email: true, name: true },
-    });
+    const user = await loadSessionUser(request.session);
     if (!user) {
       request.session.delete();
-      return reply.status(401).send({ error: "User not found" });
+      return reply.status(401).send({ error: "Not authenticated" });
     }
-    return user;
+    return mePayload(user);
   });
 
   app.post("/auth/logout", async (request) => {
