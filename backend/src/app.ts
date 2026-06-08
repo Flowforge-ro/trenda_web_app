@@ -7,6 +7,7 @@ import { healthRoutes } from "./system/health/health.js";
 import { authRoutes } from "./system/auth/auth.routes.js";
 import { ordersRoutes } from "./modules/orders/orders.routes.js";
 import { organizationsRoutes } from "./modules/organizations/organizations.routes.js";
+import { usersRoutes } from "./modules/users/users.routes.js";
 
 const isProd = process.env.NODE_ENV === "production";
 
@@ -65,5 +66,6 @@ await app.register(healthRoutes);
 await app.register(authRoutes);
 await app.register(ordersRoutes);
 await app.register(organizationsRoutes);
+await app.register(usersRoutes);
 
 export { app };
