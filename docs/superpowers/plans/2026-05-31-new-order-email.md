@@ -42,8 +42,8 @@ model Order {
   serieSasiu        String
   piesa             String
   status            String   @default("În așteptare")
-  numarComanda      String?
-  timpLivrare       String?
+  orderNumber      String?
+  deliveryTime       String?
   internetMessageId String?
   emailStatus       String   @default("trimis")
   createdAt         DateTime @default(now())
@@ -727,8 +727,8 @@ export interface Order {
   serieSasiu: string;
   piesa: string;
   status: string;
-  numarComanda: string | null;
-  timpLivrare: string | null;
+  orderNumber: string | null;
+  deliveryTime: string | null;
   emailStatus: string;
   createdAt: string;
 }
@@ -907,7 +907,7 @@ At the top of `OrdersPage`, add:
   const { data: orders = [], isLoading } = useOrders();
 ```
 
-Replace the `<TableBody>` block with one driven by the real shape (`numarComanda`/`timpLivrare` are nullable, keyed by `id`):
+Replace the `<TableBody>` block with one driven by the real shape (`orderNumber`/`deliveryTime` are nullable, keyed by `id`):
 
 ```tsx
           <TableBody>
@@ -921,7 +921,7 @@ Replace the `<TableBody>` block with one driven by the real shape (`numarComanda
               orders.map((o) => (
                 <TableRow key={o.id} className="hover:bg-gray-100">
                   <TableCell className="px-4 py-3 font-medium text-foreground">
-                    {o.numarComanda ?? "—"}
+                    {o.orderNumber ?? "—"}
                   </TableCell>
                   <TableCell className="px-4 py-3 text-foreground">{o.piesa}</TableCell>
                   <TableCell className="px-4 py-3 font-mono text-xs text-muted-foreground">
@@ -931,7 +931,7 @@ Replace the `<TableBody>` block with one driven by the real shape (`numarComanda
                     <StatusBadge status={o.status} />
                   </TableCell>
                   <TableCell className="px-4 py-3 text-foreground">
-                    {o.timpLivrare ?? "—"}
+                    {o.deliveryTime ?? "—"}
                   </TableCell>
                 </TableRow>
               ))
@@ -971,7 +971,7 @@ Open `http://localhost:5173` (same-origin — required for cookie auth) and log 
 
 - [ ] **Step 3: Submit a new order**
 
-Open the New-order dialog, fill `emailFurnizor` (use an inbox you control), `serieSasiu`, `piesa`, submit. Expected: dialog closes, the order appears in the table with `numarComanda` and `timpLivrare` as `—`.
+Open the New-order dialog, fill `emailFurnizor` (use an inbox you control), `serieSasiu`, `piesa`, submit. Expected: dialog closes, the order appears in the table with `orderNumber` and `deliveryTime` as `—`.
 
 - [ ] **Step 4: Confirm the email + persisted id**
 

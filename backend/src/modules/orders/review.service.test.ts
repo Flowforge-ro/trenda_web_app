@@ -14,8 +14,8 @@ const reply = {
 const orderRow = {
   id: "O1",
   userId: "U1",
-  numarComanda: null,
-  timpLivrare: null,
+  orderNumber: null,
+  deliveryTime: null,
   deliveryEarliest: null,
   deliveryLatest: null,
   replies: [reply],
@@ -53,7 +53,7 @@ test("getOrderReview returns reply, attachment meta, and current fields", async 
   assert.deepEqual(result!.attachments, [
     { id: "A1", name: "po.pdf", contentType: "application/pdf", size: 10 },
   ]);
-  assert.equal(result!.current.numarComanda, null);
+  assert.equal(result!.current.orderNumber, null);
 });
 
 test("getOrderReview returns null for an order owned by another user", async () => {
@@ -128,7 +128,7 @@ test("reviewSaveSchema rejects a non-date string", () => {
 });
 
 test("reviewSaveSchema accepts order number with no dates", () => {
-  const r = reviewSaveSchema.safeParse({ numarComanda: "C-123" });
+  const r = reviewSaveSchema.safeParse({ orderNumber: "C-123" });
   assert.equal(r.success, true);
 });
 
@@ -143,12 +143,12 @@ test("saveOrderReview sets fields, mirrors a single date, and clears needs_revie
   const result = await saveOrderReview(
     "U1",
     "O1",
-    { numarComanda: "C-123", deliveryEarliest: "2026-06-10" },
+    { orderNumber: "C-123", deliveryEarliest: "2026-06-10" },
     deps
   );
 
   assert.ok(result);
-  assert.equal(updateData.numarComanda, "C-123");
+  assert.equal(updateData.orderNumber, "C-123");
   assert.equal(updateData.replyStatus, "extracted");
   assert.deepEqual(updateData.deliveryEarliest, new Date("2026-06-10"));
   assert.deepEqual(updateData.deliveryLatest, new Date("2026-06-10"));
@@ -158,6 +158,6 @@ test("saveOrderReview returns null for a non-owner", async () => {
   const deps = makeDeps();
   deps.prisma.order.findFirst = (async ({ where }: any) =>
     where.userId === "U1" ? { id: "O1", userId: "U1" } : null) as any;
-  const result = await saveOrderReview("U2", "O1", { numarComanda: "C-1" }, deps);
+  const result = await saveOrderReview("U2", "O1", { orderNumber: "C-1" }, deps);
   assert.equal(result, null);
 });

@@ -57,8 +57,8 @@ export interface OrderReviewResult {
   };
   attachments: AttachmentMeta[];
   current: {
-    numarComanda: string | null;
-    timpLivrare: string | null;
+    orderNumber: string | null;
+    deliveryTime: string | null;
     deliveryEarliest: Date | null;
     deliveryLatest: Date | null;
   };
@@ -88,7 +88,7 @@ const dateStr = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "expected YYYY-MM-DD");
 
 export const reviewSaveSchema = z
   .object({
-    numarComanda: z.string().trim().min(1).nullish(),
+    orderNumber: z.string().trim().min(1).nullish(),
     deliveryEarliest: dateStr.nullish(),
     deliveryLatest: dateStr.nullish(),
   })
@@ -116,7 +116,7 @@ export async function saveOrderReview(
   return deps.prisma.order.update({
     where: { id: orderId },
     data: {
-      numarComanda: input.numarComanda ?? undefined,
+      orderNumber: input.orderNumber ?? undefined,
       deliveryEarliest: earliest ? new Date(earliest) : undefined,
       deliveryLatest: latest ? new Date(latest) : undefined,
       replyStatus: "extracted",
@@ -151,8 +151,8 @@ export async function getOrderReview(
     },
     attachments,
     current: {
-      numarComanda: order.numarComanda,
-      timpLivrare: order.timpLivrare,
+      orderNumber: order.orderNumber,
+      deliveryTime: order.deliveryTime,
       deliveryEarliest: order.deliveryEarliest,
       deliveryLatest: order.deliveryLatest,
     },

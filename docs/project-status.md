@@ -9,8 +9,8 @@ tests green; one Prisma migration deferred until the DB is up — see end of fil
 web app; the system emails the supplier a part request and then tracks the
 conversation until it can fill in the two values that matter most:
 
-1. **Order number** (`numarComanda`)
-2. **Delivery date** (`timpLivrare`)
+1. **Order number** (`orderNumber`)
+2. **Delivery date** (`deliveryTime`)
 
 These come back in the supplier's **reply**, which is **unstructured** — written by a
 human, in prose, possibly with the real data in an attached **PDF** or a **JPG photo**
@@ -24,7 +24,7 @@ of a document. So extraction, not parsing, is the hard part.
   message's `internetMessageId` for future reply-matching).
 - Order is kept even if the send fails (`emailStatus`: `in_curs` → `trimis` / `esuat`).
 - Failed/stuck sends show a badge + **Retrimite** (resend) button in the orders table.
-- `numarComanda` and `timpLivrare` are intentionally **null at creation** — they're
+- `orderNumber` and `deliveryTime` are intentionally **null at creation** — they're
   filled later from the reply.
 - Verified live: requires a **licensed Exchange Online member account** in the app's
   tenant (see `memory: graph-mail-needs-licensed-member`).
@@ -38,7 +38,7 @@ Key code:
 - `frontend/src/lib/orders.ts`, `frontend/src/pages/orders.tsx` — UI
 
 Data model (`backend/prisma/schema.prisma` → `Order`): `emailFurnizor`, `serieSasiu`,
-`piesa`, `status`, `numarComanda?`, `timpLivrare?`, `deliveryEarliest?`,
+`piesa`, `status`, `orderNumber?`, `deliveryTime?`, `deliveryEarliest?`,
 `deliveryLatest?`, `internetMessageId?`, `emailStatus`, `replyStatus`,
 `statusRequestSentAt?`. Plus `User.lastPolledAt?` and an `OrderReply` table (one row per
 matched supplier reply: `graphMessageId` unique, `body`, `receivedDateTime`, …).
@@ -60,7 +60,7 @@ Per cycle, per user:
 structured `responseSchema` JSON) over the **reply body text**, with an **attachment
 vision fallback** (PDF + JPEG/PNG). A second **extract phase** in the poller processes
 every `reply_received` order:
-- Writes `numarComanda`, the verbatim `timpLivrare`, and a normalized delivery range
+- Writes `orderNumber`, the verbatim `deliveryTime`, and a normalized delivery range
   `deliveryEarliest`/`deliveryLatest` (today's date is given to the model so relative
   phrases resolve; vague phrases become a range).
 - `replyStatus` → `extracted` (both values present) or `needs_review` (anything missing /

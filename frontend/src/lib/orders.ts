@@ -7,8 +7,8 @@ export interface Order {
   serieSasiu: string;
   piesa: string;
   status: string;
-  numarComanda: string | null;
-  timpLivrare: string | null;
+  orderNumber: string | null;
+  deliveryTime: string | null;
   deliveryEarliest: string | null;
   deliveryLatest: string | null;
   replyStatus: string;
@@ -114,15 +114,15 @@ export interface OrderReview {
   };
   attachments: ReviewAttachment[];
   current: {
-    numarComanda: string | null;
-    timpLivrare: string | null;
+    orderNumber: string | null;
+    deliveryTime: string | null;
     deliveryEarliest: string | null;
     deliveryLatest: string | null;
   };
 }
 
 export interface SaveReviewPayload {
-  numarComanda?: string | null;
+  orderNumber?: string | null;
   deliveryEarliest?: string | null;
   deliveryLatest?: string | null;
 }

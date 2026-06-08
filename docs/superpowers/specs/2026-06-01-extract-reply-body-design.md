@@ -8,8 +8,8 @@ When the poller has recorded a supplier reply (`replyStatus = "reply_received"`)
 extract the two values that matter from the reply **body text** and write them back to
 the `Order`:
 
-1. `numarComanda` — supplier order number.
-2. Delivery date — stored both as the verbatim phrase (`timpLivrare`) and as a
+1. `orderNumber` — supplier order number.
+2. Delivery date — stored both as the verbatim phrase (`deliveryTime`) and as a
    normalized date range (`deliveryEarliest` / `deliveryLatest`).
 
 Extraction uses an LLM (Gemini Flash) over **body text only**. Attachments, PDFs, and
@@ -43,8 +43,8 @@ validation) leaves the order flagged `needs_review` for a human.
 
 ```prisma
   // existing, repurposed:
-  numarComanda      String?    // extracted supplier order number (null until extracted)
-  timpLivrare       String?    // verbatim delivery phrase from the reply (display/audit)
+  orderNumber      String?    // extracted supplier order number (null until extracted)
+  deliveryTime       String?    // verbatim delivery phrase from the reply (display/audit)
   // new:
   deliveryEarliest  DateTime?  // normalized earliest delivery date
   deliveryLatest    DateTime?  // normalized latest delivery date (== earliest if precise)
@@ -84,19 +84,19 @@ extractOrderInfo(body: string, today: string, deps?: ExtractionDeps): Promise<Ex
 ### Prompt
 
 System/instruction prompt (Romanian-aware) tells the model:
-- Extract the supplier order number (`numarComanda`) and the delivery date if present.
+- Extract the supplier order number (`orderNumber`) and the delivery date if present.
 - Today's date is `{today}`; resolve relative dates against it.
 - Return `deliveryEarliest`/`deliveryLatest` as ISO `YYYY-MM-DD`. Precise date → both
   equal. A vague phrase ("next week", "in a few days") → a plausible **range**
   (earliest/latest). If a value is genuinely absent, return `null` for it — never invent.
-- `timpLivrare` = the exact delivery phrase as written in the email (or `null`).
+- `deliveryTime` = the exact delivery phrase as written in the email (or `null`).
 
 ### Response schema (JSON)
 
 ```json
 {
-  "numarComanda":     { "type": "string", "nullable": true },
-  "timpLivrare":      { "type": "string", "nullable": true },
+  "orderNumber":     { "type": "string", "nullable": true },
+  "deliveryTime":      { "type": "string", "nullable": true },
   "deliveryEarliest": { "type": "string", "nullable": true },
   "deliveryLatest":   { "type": "string", "nullable": true }
 }
@@ -106,9 +106,9 @@ No confidence fields — we trust the model's null/non-null output.
 
 ### Apply rules
 
-- **Order number** is applied iff `numarComanda` is non-null/non-empty.
+- **Order number** is applied iff `orderNumber` is non-null/non-empty.
 - **Delivery** is applied iff both `deliveryEarliest` and `deliveryLatest` are non-null
-  AND both parse as ISO `YYYY-MM-DD` dates. When applied, `timpLivrare` (verbatim) and
+  AND both parse as ISO `YYYY-MM-DD` dates. When applied, `deliveryTime` (verbatim) and
   both parsed `DateTime`s are written together; delivery is all-or-nothing.
 - Final status: `extracted` iff **both** applied; otherwise `needs_review`, writing only
   whichever was present and leaving the rest null.
@@ -117,8 +117,8 @@ No confidence fields — we trust the model's null/non-null output.
 
 ```ts
 interface ExtractionResult {
-  numarComanda: string | null;      // null unless it passed the gate
-  timpLivrare: string | null;       // verbatim phrase, only if delivery passed
+  orderNumber: string | null;      // null unless it passed the gate
+  deliveryTime: string | null;       // verbatim phrase, only if delivery passed
   deliveryEarliest: Date | null;    // only if delivery passed
   deliveryLatest: Date | null;      // only if delivery passed
   status: "extracted" | "needs_review";
@@ -142,7 +142,7 @@ Invalid/unparseable ISO dates from the model are treated as a delivery miss (not
    - If the body is empty/null → set `needs_review` (nothing to extract) and continue.
    - Call `extractOrderInfo(body, today)`. On a thrown error (API/parse failure), log
      and **leave the order at `reply_received`** (retried next poll) — do not advance.
-   - On success, write back in one `prisma.order.update`: `numarComanda`, `timpLivrare`,
+   - On success, write back in one `prisma.order.update`: `orderNumber`, `deliveryTime`,
      `deliveryEarliest`, `deliveryLatest` (each as returned, possibly null), and
      `replyStatus = result.status`.
 
@@ -175,7 +175,7 @@ No new write endpoints in this phase (manual correction UI is future work).
 **`extraction.test.ts`** (fake `generate` returning a JSON string, no network):
 - Both fields present → `extracted` with values.
 - A date range (distinct earliest/latest) → both `DateTime`s parsed.
-- Order number but no delivery → `needs_review`, only `numarComanda` kept.
+- Order number but no delivery → `needs_review`, only `orderNumber` kept.
 - Only one delivery end present → delivery not applied.
 - All-null response → `needs_review`, nothing set.
 - Invalid ISO date from model → treated as delivery miss, no throw.

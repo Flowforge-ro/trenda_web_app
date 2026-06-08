@@ -8,7 +8,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** When the poller has saved a supplier reply, run Gemini Flash over the reply body to extract `numarComanda` and a normalized delivery date range, gate each value on token-logprob confidence, and write back to the `Order` (status `extracted` or `needs_review`).
+**Goal:** When the poller has saved a supplier reply, run Gemini Flash over the reply body to extract `orderNumber` and a normalized delivery date range, gate each value on token-logprob confidence, and write back to the `Order` (status `extracted` or `needs_review`).
 
 **Architecture:** A new pure-ish `lib/extraction.ts` (injectable Gemini `generate` seam + logprob-based confidence) is called from a new **extract phase** in the poll cycle. `pollReplies` splits into an *ingest* phase (existing reply-matching) and an independent *extract* phase that processes every `reply_received` order (so failed extractions retry on later polls, even with no new mail). Frontend shows a delivery countdown + `needs_review` badge.
 
@@ -51,7 +51,7 @@
 
 - [ ] **Step 1: Edit `schema.prisma`**
 
-In the `Order` model, add two fields after `timpLivrare`:
+In the `Order` model, add two fields after `deliveryTime`:
 
 ```prisma
   deliveryEarliest  DateTime?
@@ -126,8 +126,8 @@ function fakeDeps(jsonText: string, lowSpans: string[] = []): ExtractionDeps {
 }
 
 function buildJson(o: {
-  numarComanda: string | null;
-  timpLivrare: string | null;
+  orderNumber: string | null;
+  deliveryTime: string | null;
   deliveryEarliest: string | null;
   deliveryLatest: string | null;
 }): string {
@@ -136,8 +136,8 @@ function buildJson(o: {
 
 test("fieldProbability returns exp(mean logprob) over a value's tokens", () => {
   const json = buildJson({
-    numarComanda: "CMD42",
-    timpLivrare: null,
+    orderNumber: "CMD42",
+    deliveryTime: null,
     deliveryEarliest: null,
     deliveryLatest: null,
   });
@@ -147,44 +147,44 @@ test("fieldProbability returns exp(mean logprob) over a value's tokens", () => {
 });
 
 test("fieldProbability returns 0 when the value is absent", () => {
-  const json = buildJson({ numarComanda: "CMD42", timpLivrare: null, deliveryEarliest: null, deliveryLatest: null });
+  const json = buildJson({ orderNumber: "CMD42", deliveryTime: null, deliveryEarliest: null, deliveryLatest: null });
   assert.equal(fieldProbability(json, charCands(json), "NOPE"), 0);
 });
 
 test("extractOrderInfo: both fields high-confidence -> extracted with values", async () => {
   const json = buildJson({
-    numarComanda: "CMD42",
-    timpLivrare: "20 iunie",
+    orderNumber: "CMD42",
+    deliveryTime: "20 iunie",
     deliveryEarliest: "2026-06-20",
     deliveryLatest: "2026-06-20",
   });
   const r = await extractOrderInfo("body", "2026-06-01", fakeDeps(json));
   assert.equal(r.status, "extracted");
-  assert.equal(r.numarComanda, "CMD42");
-  assert.equal(r.timpLivrare, "20 iunie");
+  assert.equal(r.orderNumber, "CMD42");
+  assert.equal(r.deliveryTime, "20 iunie");
   assert.equal(r.deliveryEarliest?.toISOString(), "2026-06-20T00:00:00.000Z");
   assert.equal(r.deliveryLatest?.toISOString(), "2026-06-20T00:00:00.000Z");
 });
 
-test("extractOrderInfo: low-confidence dates -> needs_review, only numarComanda kept", async () => {
+test("extractOrderInfo: low-confidence dates -> needs_review, only orderNumber kept", async () => {
   const json = buildJson({
-    numarComanda: "CMD42",
-    timpLivrare: "20 iunie",
+    orderNumber: "CMD42",
+    deliveryTime: "20 iunie",
     deliveryEarliest: "2026-06-20",
     deliveryLatest: "2026-06-20",
   });
   const r = await extractOrderInfo("body", "2026-06-01", fakeDeps(json, ["2026-06-20"]));
   assert.equal(r.status, "needs_review");
-  assert.equal(r.numarComanda, "CMD42");
-  assert.equal(r.timpLivrare, null);
+  assert.equal(r.orderNumber, "CMD42");
+  assert.equal(r.deliveryTime, null);
   assert.equal(r.deliveryEarliest, null);
   assert.equal(r.deliveryLatest, null);
 });
 
 test("extractOrderInfo: a date range is parsed when both ends present", async () => {
   const json = buildJson({
-    numarComanda: "CMD42",
-    timpLivrare: "saptamana viitoare",
+    orderNumber: "CMD42",
+    deliveryTime: "saptamana viitoare",
     deliveryEarliest: "2026-06-08",
     deliveryLatest: "2026-06-12",
   });
@@ -195,23 +195,23 @@ test("extractOrderInfo: a date range is parsed when both ends present", async ()
 });
 
 test("extractOrderInfo: all-null response -> needs_review with nothing set", async () => {
-  const json = buildJson({ numarComanda: null, timpLivrare: null, deliveryEarliest: null, deliveryLatest: null });
+  const json = buildJson({ orderNumber: null, deliveryTime: null, deliveryEarliest: null, deliveryLatest: null });
   const r = await extractOrderInfo("body", "2026-06-01", fakeDeps(json));
   assert.equal(r.status, "needs_review");
-  assert.equal(r.numarComanda, null);
+  assert.equal(r.orderNumber, null);
   assert.equal(r.deliveryEarliest, null);
 });
 
 test("extractOrderInfo: invalid ISO date -> delivery treated as a miss", async () => {
   const json = buildJson({
-    numarComanda: "CMD42",
-    timpLivrare: "candva",
+    orderNumber: "CMD42",
+    deliveryTime: "candva",
     deliveryEarliest: "next week",
     deliveryLatest: "next week",
   });
   const r = await extractOrderInfo("body", "2026-06-01", fakeDeps(json));
   assert.equal(r.status, "needs_review");
-  assert.equal(r.numarComanda, "CMD42");
+  assert.equal(r.orderNumber, "CMD42");
   assert.equal(r.deliveryEarliest, null);
 });
 
@@ -248,16 +248,16 @@ export interface ExtractionDeps {
 }
 
 export interface ExtractionResult {
-  numarComanda: string | null;
-  timpLivrare: string | null;
+  orderNumber: string | null;
+  deliveryTime: string | null;
   deliveryEarliest: Date | null;
   deliveryLatest: Date | null;
   status: "extracted" | "needs_review";
 }
 
 interface ParsedFields {
-  numarComanda: string | null;
-  timpLivrare: string | null;
+  orderNumber: string | null;
+  deliveryTime: string | null;
   deliveryEarliest: string | null;
   deliveryLatest: string | null;
 }
@@ -266,11 +266,11 @@ function buildPrompt(body: string, today: string): string {
   return [
     "Ești un asistent care extrage date dintr-un email de la un furnizor de piese auto.",
     `Data de azi este ${today}.`,
-    "Extrage numărul de comandă al furnizorului (numarComanda) și data livrării, dacă există.",
+    "Extrage numărul de comandă al furnizorului (orderNumber) și data livrării, dacă există.",
     "Pentru livrare: returnează deliveryEarliest și deliveryLatest în format ISO YYYY-MM-DD.",
     "Dacă data este precisă, deliveryEarliest și deliveryLatest sunt egale.",
     'Dacă este vagă ("săptămâna viitoare", "în câteva zile"), returnează un interval plauzibil rezolvat față de data de azi.',
-    "timpLivrare = expresia exactă despre livrare așa cum este scrisă în email.",
+    "deliveryTime = expresia exactă despre livrare așa cum este scrisă în email.",
     "Dacă o valoare lipsește cu adevărat, returnează null pentru ea. Nu inventa niciodată valori.",
     "",
     "Conținutul emailului:",
@@ -289,8 +289,8 @@ function defaultGenerate(prompt: string): Promise<GenerateResult> {
         responseSchema: {
           type: Type.OBJECT,
           properties: {
-            numarComanda: { type: Type.STRING, nullable: true },
-            timpLivrare: { type: Type.STRING, nullable: true },
+            orderNumber: { type: Type.STRING, nullable: true },
+            deliveryTime: { type: Type.STRING, nullable: true },
             deliveryEarliest: { type: Type.STRING, nullable: true },
             deliveryLatest: { type: Type.STRING, nullable: true },
           },
@@ -385,15 +385,15 @@ export async function extractOrderInfo(
   const { jsonText, chosenCandidates } = await deps.generate(buildPrompt(body, today));
   const parsed = JSON.parse(jsonText) as ParsedFields;
 
-  let numarComanda: string | null = null;
+  let orderNumber: string | null = null;
   if (
-    parsed.numarComanda &&
-    fieldProbability(jsonText, chosenCandidates, parsed.numarComanda) >= CONFIDENCE_THRESHOLD
+    parsed.orderNumber &&
+    fieldProbability(jsonText, chosenCandidates, parsed.orderNumber) >= CONFIDENCE_THRESHOLD
   ) {
-    numarComanda = parsed.numarComanda;
+    orderNumber = parsed.orderNumber;
   }
 
-  let timpLivrare: string | null = null;
+  let deliveryTime: string | null = null;
   let deliveryEarliest: Date | null = null;
   let deliveryLatest: Date | null = null;
   if (parsed.deliveryEarliest && parsed.deliveryLatest) {
@@ -407,14 +407,14 @@ export async function extractOrderInfo(
       if (prob >= CONFIDENCE_THRESHOLD) {
         deliveryEarliest = earliest;
         deliveryLatest = latest;
-        timpLivrare = parsed.timpLivrare;
+        deliveryTime = parsed.deliveryTime;
       }
     }
   }
 
   const status: ExtractionResult["status"] =
-    numarComanda && deliveryEarliest ? "extracted" : "needs_review";
-  return { numarComanda, timpLivrare, deliveryEarliest, deliveryLatest, status };
+    orderNumber && deliveryEarliest ? "extracted" : "needs_review";
+  return { orderNumber, deliveryTime, deliveryEarliest, deliveryLatest, status };
 }
 ```
 
@@ -444,7 +444,7 @@ const res = await ai.models.generateContent({
     responseMimeType: "application/json",
     responseSchema: {
       type: Type.OBJECT,
-      properties: { numarComanda: { type: Type.STRING, nullable: true } },
+      properties: { orderNumber: { type: Type.STRING, nullable: true } },
     },
     responseLogprobs: true,
   },
@@ -509,8 +509,8 @@ First, make the fake `order.findMany` respect the `replyStatus` filter and add t
     getAccessTokenFromRefreshToken: async () => ({ accessToken: "AT" }),
     listMessagesSince: async () => messages,
     extractOrderInfo: async () => ({
-      numarComanda: null,
-      timpLivrare: null,
+      orderNumber: null,
+      deliveryTime: null,
       deliveryEarliest: null,
       deliveryLatest: null,
       status: "needs_review" as const,
@@ -543,8 +543,8 @@ test("extract phase writes fields and sets extracted on a confident result", asy
   await pollReplies(
     makeDeps(state, [], {
       extractOrderInfo: async () => ({
-        numarComanda: "CMD42",
-        timpLivrare: "20 iunie",
+        orderNumber: "CMD42",
+        deliveryTime: "20 iunie",
         deliveryEarliest: new Date("2026-06-20T00:00:00.000Z"),
         deliveryLatest: new Date("2026-06-20T00:00:00.000Z"),
         status: "extracted" as const,
@@ -554,8 +554,8 @@ test("extract phase writes fields and sets extracted on a confident result", asy
 
   const update = state.replyUpdates.find((u) => u.id === "O2");
   assert.ok(update, "expected an update for O2");
-  assert.equal(update.numarComanda, "CMD42");
-  assert.equal(update.timpLivrare, "20 iunie");
+  assert.equal(update.orderNumber, "CMD42");
+  assert.equal(update.deliveryTime, "20 iunie");
   assert.equal(update.deliveryEarliest?.toISOString(), "2026-06-20T00:00:00.000Z");
   assert.equal(update.replyStatus, "extracted");
 });
@@ -570,8 +570,8 @@ test("extract phase sets needs_review when the extractor flags it", async () => 
   await pollReplies(
     makeDeps(state, [], {
       extractOrderInfo: async () => ({
-        numarComanda: "CMD42",
-        timpLivrare: null,
+        orderNumber: "CMD42",
+        deliveryTime: null,
         deliveryEarliest: null,
         deliveryLatest: null,
         status: "needs_review" as const,
@@ -582,7 +582,7 @@ test("extract phase sets needs_review when the extractor flags it", async () => 
   const update = state.replyUpdates.find((u) => u.id === "O2");
   assert.ok(update);
   assert.equal(update.replyStatus, "needs_review");
-  assert.equal(update.numarComanda, "CMD42");
+  assert.equal(update.orderNumber, "CMD42");
   assert.equal(update.deliveryEarliest, null);
 });
 
@@ -617,8 +617,8 @@ test("extract phase sets needs_review and skips the LLM when the reply body is e
       extractOrderInfo: async () => {
         called = true;
         return {
-          numarComanda: null,
-          timpLivrare: null,
+          orderNumber: null,
+          deliveryTime: null,
           deliveryEarliest: null,
           deliveryLatest: null,
           status: "needs_review" as const,
@@ -731,8 +731,8 @@ async function extractForOrder(orderId: string, deps: PollDeps): Promise<void> {
   await deps.prisma.order.update({
     where: { id: orderId },
     data: {
-      numarComanda: result.numarComanda,
-      timpLivrare: result.timpLivrare,
+      orderNumber: result.orderNumber,
+      deliveryTime: result.deliveryTime,
       deliveryEarliest: result.deliveryEarliest,
       deliveryLatest: result.deliveryLatest,
       replyStatus: result.status,
@@ -774,8 +774,8 @@ export interface Order {
   serieSasiu: string;
   piesa: string;
   status: string;
-  numarComanda: string | null;
-  timpLivrare: string | null;
+  orderNumber: string | null;
+  deliveryTime: string | null;
   deliveryEarliest: string | null;
   deliveryLatest: string | null;
   replyStatus: string;
@@ -875,10 +875,10 @@ function StatusCell({ order }: { order: Order }) {
 Replace the "Timp livrare" cell so it shows the countdown (with the verbatim phrase as a tooltip), falling back to the phrase, then "—":
 
 ```tsx
-                  <TableCell className="px-4 py-3 text-foreground" title={o.timpLivrare ?? undefined}>
+                  <TableCell className="px-4 py-3 text-foreground" title={o.deliveryTime ?? undefined}>
                     {o.deliveryEarliest && o.deliveryLatest
                       ? formatDeliveryCountdown(o.deliveryEarliest, o.deliveryLatest)
-                      : o.timpLivrare ?? "—"}
+                      : o.deliveryTime ?? "—"}
                   </TableCell>
 ```
 

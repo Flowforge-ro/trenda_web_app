@@ -58,7 +58,7 @@ test("PATCH /orders/:id/review without a session returns 401", async () => {
   const res = await app.inject({
     method: "PATCH",
     url: "/orders/O1/review",
-    payload: { numarComanda: "C-1" },
+    payload: { orderNumber: "C-1" },
   });
   assert.equal(res.statusCode, 401);
 });

@@ -142,8 +142,8 @@ async function extractForOrder(
   let result: ExtractionResult = reply?.body
     ? await deps.extractOrderInfo({ kind: "text", body: reply.body }, today)
     : {
-        numarComanda: null,
-        timpLivrare: null,
+        orderNumber: null,
+        deliveryTime: null,
         deliveryEarliest: null,
         deliveryLatest: null,
         status: "needs_review",
@@ -176,8 +176,8 @@ async function extractForOrder(
   await deps.prisma.order.update({
     where: { id: orderId },
     data: {
-      numarComanda: result.numarComanda,
-      timpLivrare: result.timpLivrare,
+      orderNumber: result.orderNumber,
+      deliveryTime: result.deliveryTime,
       deliveryEarliest: result.deliveryEarliest,
       deliveryLatest: result.deliveryLatest,
       replyStatus: result.status,

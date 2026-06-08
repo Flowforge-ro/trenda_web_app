@@ -160,16 +160,16 @@ export interface ExtractionDeps {
 }
 
 export interface ExtractionResult {
-  numarComanda: string | null;
-  timpLivrare: string | null;
+  orderNumber: string | null;
+  deliveryTime: string | null;
   deliveryEarliest: Date | null;
   deliveryLatest: Date | null;
   status: "extracted" | "needs_review";
 }
 
 interface ParsedFields {
-  numarComanda: string | null;
-  timpLivrare: string | null;
+  orderNumber: string | null;
+  deliveryTime: string | null;
   deliveryEarliest: string | null;
   deliveryLatest: string | null;
 }
@@ -178,11 +178,11 @@ function instructions(today: string): string[] {
   return [
     "Ești un asistent care extrage date dintr-un email de la un furnizor de piese auto.",
     `Data de azi este ${today}.`,
-    "Extrage numărul de comandă al furnizorului (numarComanda) și data livrării, dacă există.",
+    "Extrage numărul de comandă al furnizorului (orderNumber) și data livrării, dacă există.",
     "Pentru livrare: returnează deliveryEarliest și deliveryLatest în format ISO YYYY-MM-DD.",
     "Dacă data este precisă, deliveryEarliest și deliveryLatest sunt egale.",
     'Dacă este vagă ("săptămâna viitoare", "în câteva zile"), returnează un interval plauzibil rezolvat față de data de azi.',
-    "timpLivrare = expresia exactă despre livrare așa cum este scrisă.",
+    "deliveryTime = expresia exactă despre livrare așa cum este scrisă.",
     "Dacă o valoare lipsește cu adevărat, returnează null pentru ea. Nu inventa niciodată valori.",
   ];
 }
@@ -213,8 +213,8 @@ async function defaultGenerate(parts: ContentPart[]): Promise<string> {
       responseSchema: {
         type: Type.OBJECT,
         properties: {
-          numarComanda: { type: Type.STRING, nullable: true },
-          timpLivrare: { type: Type.STRING, nullable: true },
+          orderNumber: { type: Type.STRING, nullable: true },
+          deliveryTime: { type: Type.STRING, nullable: true },
           deliveryEarliest: { type: Type.STRING, nullable: true },
           deliveryLatest: { type: Type.STRING, nullable: true },
         },
@@ -240,9 +240,9 @@ export async function extractOrderInfo(
   const jsonText = await deps.generate(buildParts(source, today));
   const parsed = JSON.parse(jsonText) as ParsedFields;
 
-  const numarComanda = parsed.numarComanda || null;
+  const orderNumber = parsed.orderNumber || null;
 
-  let timpLivrare: string | null = null;
+  let deliveryTime: string | null = null;
   let deliveryEarliest: Date | null = null;
   let deliveryLatest: Date | null = null;
   if (parsed.deliveryEarliest && parsed.deliveryLatest) {
@@ -251,33 +251,33 @@ export async function extractOrderInfo(
     if (earliest && latest) {
       deliveryEarliest = earliest;
       deliveryLatest = latest;
-      timpLivrare = parsed.timpLivrare;
+      deliveryTime = parsed.deliveryTime;
     }
   }
 
   const status: ExtractionResult["status"] =
-    numarComanda && deliveryEarliest ? "extracted" : "needs_review";
-  return { numarComanda, timpLivrare, deliveryEarliest, deliveryLatest, status };
+    orderNumber && deliveryEarliest ? "extracted" : "needs_review";
+  return { orderNumber, deliveryTime, deliveryEarliest, deliveryLatest, status };
 }
 
 /**
  * Combine a base extraction with an extra one, filling ONLY fields still missing in base.
- * Delivery is all-or-nothing (timpLivrare + both dates move together). Recomputes status.
+ * Delivery is all-or-nothing (deliveryTime + both dates move together). Recomputes status.
  */
 export function mergeMissing(
   base: ExtractionResult,
   extra: ExtractionResult
 ): ExtractionResult {
-  const numarComanda = base.numarComanda ?? extra.numarComanda;
-  let { timpLivrare, deliveryEarliest, deliveryLatest } = base;
+  const orderNumber = base.orderNumber ?? extra.orderNumber;
+  let { deliveryTime, deliveryEarliest, deliveryLatest } = base;
   if (deliveryEarliest === null && extra.deliveryEarliest !== null) {
-    timpLivrare = extra.timpLivrare;
+    deliveryTime = extra.deliveryTime;
     deliveryEarliest = extra.deliveryEarliest;
     deliveryLatest = extra.deliveryLatest;
   }
   const status: ExtractionResult["status"] =
-    numarComanda && deliveryEarliest ? "extracted" : "needs_review";
-  return { numarComanda, timpLivrare, deliveryEarliest, deliveryLatest, status };
+    orderNumber && deliveryEarliest ? "extracted" : "needs_review";
+  return { orderNumber, deliveryTime, deliveryEarliest, deliveryLatest, status };
 }
 ```
 
@@ -293,8 +293,8 @@ function fakeDeps(jsonText: string): ExtractionDeps {
 }
 
 function buildJson(o: {
-  numarComanda: string | null;
-  timpLivrare: string | null;
+  orderNumber: string | null;
+  deliveryTime: string | null;
   deliveryEarliest: string | null;
   deliveryLatest: string | null;
 }): string {
@@ -304,15 +304,15 @@ function buildJson(o: {
 const D20 = new Date("2026-06-20T00:00:00.000Z");
 
 test("extractOrderInfo (text): both fields present -> extracted", async () => {
-  const json = buildJson({ numarComanda: "CMD42", timpLivrare: "20 iunie", deliveryEarliest: "2026-06-20", deliveryLatest: "2026-06-20" });
+  const json = buildJson({ orderNumber: "CMD42", deliveryTime: "20 iunie", deliveryEarliest: "2026-06-20", deliveryLatest: "2026-06-20" });
   const r = await extractOrderInfo({ kind: "text", body: "body" }, "2026-06-01", fakeDeps(json));
   assert.equal(r.status, "extracted");
-  assert.equal(r.numarComanda, "CMD42");
+  assert.equal(r.orderNumber, "CMD42");
   assert.equal(r.deliveryEarliest?.toISOString(), D20.toISOString());
 });
 
 test("extractOrderInfo (text): a date range is parsed", async () => {
-  const json = buildJson({ numarComanda: "CMD42", timpLivrare: "saptamana viitoare", deliveryEarliest: "2026-06-08", deliveryLatest: "2026-06-12" });
+  const json = buildJson({ orderNumber: "CMD42", deliveryTime: "saptamana viitoare", deliveryEarliest: "2026-06-08", deliveryLatest: "2026-06-12" });
   const r = await extractOrderInfo({ kind: "text", body: "body" }, "2026-06-01", fakeDeps(json));
   assert.equal(r.status, "extracted");
   assert.equal(r.deliveryEarliest?.toISOString(), "2026-06-08T00:00:00.000Z");
@@ -320,29 +320,29 @@ test("extractOrderInfo (text): a date range is parsed", async () => {
 });
 
 test("extractOrderInfo (text): order number but no delivery -> needs_review", async () => {
-  const json = buildJson({ numarComanda: "CMD42", timpLivrare: null, deliveryEarliest: null, deliveryLatest: null });
+  const json = buildJson({ orderNumber: "CMD42", deliveryTime: null, deliveryEarliest: null, deliveryLatest: null });
   const r = await extractOrderInfo({ kind: "text", body: "body" }, "2026-06-01", fakeDeps(json));
   assert.equal(r.status, "needs_review");
-  assert.equal(r.numarComanda, "CMD42");
+  assert.equal(r.orderNumber, "CMD42");
   assert.equal(r.deliveryEarliest, null);
 });
 
 test("extractOrderInfo (text): only one delivery end present -> delivery not applied", async () => {
-  const json = buildJson({ numarComanda: "CMD42", timpLivrare: "candva", deliveryEarliest: "2026-06-20", deliveryLatest: null });
+  const json = buildJson({ orderNumber: "CMD42", deliveryTime: "candva", deliveryEarliest: "2026-06-20", deliveryLatest: null });
   const r = await extractOrderInfo({ kind: "text", body: "body" }, "2026-06-01", fakeDeps(json));
   assert.equal(r.status, "needs_review");
   assert.equal(r.deliveryEarliest, null);
 });
 
 test("extractOrderInfo (text): all-null -> needs_review with nothing set", async () => {
-  const json = buildJson({ numarComanda: null, timpLivrare: null, deliveryEarliest: null, deliveryLatest: null });
+  const json = buildJson({ orderNumber: null, deliveryTime: null, deliveryEarliest: null, deliveryLatest: null });
   const r = await extractOrderInfo({ kind: "text", body: "body" }, "2026-06-01", fakeDeps(json));
   assert.equal(r.status, "needs_review");
-  assert.equal(r.numarComanda, null);
+  assert.equal(r.orderNumber, null);
 });
 
 test("extractOrderInfo (text): invalid ISO date -> delivery miss", async () => {
-  const json = buildJson({ numarComanda: "CMD42", timpLivrare: "candva", deliveryEarliest: "next week", deliveryLatest: "next week" });
+  const json = buildJson({ orderNumber: "CMD42", deliveryTime: "candva", deliveryEarliest: "next week", deliveryLatest: "next week" });
   const r = await extractOrderInfo({ kind: "text", body: "body" }, "2026-06-01", fakeDeps(json));
   assert.equal(r.status, "needs_review");
   assert.equal(r.deliveryEarliest, null);
@@ -350,49 +350,49 @@ test("extractOrderInfo (text): invalid ISO date -> delivery miss", async () => {
 
 test("extractOrderInfo (binary): sends an inlineData part with the mime type", async () => {
   let received: ContentPart[] = [];
-  const json = buildJson({ numarComanda: "CMD7", timpLivrare: null, deliveryEarliest: null, deliveryLatest: null });
+  const json = buildJson({ orderNumber: "CMD7", deliveryTime: null, deliveryEarliest: null, deliveryLatest: null });
   const r = await extractOrderInfo(
     { kind: "binary", bytes: new Uint8Array([1, 2, 3]), mimeType: "image/png" },
     "2026-06-01",
     { generate: async (parts) => { received = parts; return json; } }
   );
-  assert.equal(r.numarComanda, "CMD7");
+  assert.equal(r.orderNumber, "CMD7");
   const inline = received.find((p) => "inlineData" in p) as Extract<ContentPart, { inlineData: unknown }> | undefined;
   assert.ok(inline, "expected an inlineData part");
   assert.equal(inline!.inlineData.mimeType, "image/png");
   assert.equal(Buffer.from(inline!.inlineData.data, "base64").length, 3);
 });
 
-test("mergeMissing fills numarComanda from extra", () => {
-  const base = { numarComanda: null, timpLivrare: null, deliveryEarliest: D20, deliveryLatest: D20, status: "needs_review" as const };
-  const extra = { numarComanda: "CMD9", timpLivrare: null, deliveryEarliest: null, deliveryLatest: null, status: "needs_review" as const };
+test("mergeMissing fills orderNumber from extra", () => {
+  const base = { orderNumber: null, deliveryTime: null, deliveryEarliest: D20, deliveryLatest: D20, status: "needs_review" as const };
+  const extra = { orderNumber: "CMD9", deliveryTime: null, deliveryEarliest: null, deliveryLatest: null, status: "needs_review" as const };
   const r = mergeMissing(base, extra);
-  assert.equal(r.numarComanda, "CMD9");
+  assert.equal(r.orderNumber, "CMD9");
   assert.equal(r.status, "extracted");
 });
 
 test("mergeMissing fills the delivery block from extra", () => {
-  const base = { numarComanda: "CMD9", timpLivrare: null, deliveryEarliest: null, deliveryLatest: null, status: "needs_review" as const };
-  const extra = { numarComanda: null, timpLivrare: "20 iunie", deliveryEarliest: D20, deliveryLatest: D20, status: "needs_review" as const };
+  const base = { orderNumber: "CMD9", deliveryTime: null, deliveryEarliest: null, deliveryLatest: null, status: "needs_review" as const };
+  const extra = { orderNumber: null, deliveryTime: "20 iunie", deliveryEarliest: D20, deliveryLatest: D20, status: "needs_review" as const };
   const r = mergeMissing(base, extra);
-  assert.equal(r.timpLivrare, "20 iunie");
+  assert.equal(r.deliveryTime, "20 iunie");
   assert.equal(r.deliveryEarliest?.toISOString(), D20.toISOString());
   assert.equal(r.status, "extracted");
 });
 
 test("mergeMissing does not overwrite values present in base", () => {
-  const base = { numarComanda: "KEEP", timpLivrare: "keep", deliveryEarliest: D20, deliveryLatest: D20, status: "extracted" as const };
-  const extra = { numarComanda: "OTHER", timpLivrare: "other", deliveryEarliest: new Date("2026-07-01T00:00:00.000Z"), deliveryLatest: new Date("2026-07-01T00:00:00.000Z"), status: "extracted" as const };
+  const base = { orderNumber: "KEEP", deliveryTime: "keep", deliveryEarliest: D20, deliveryLatest: D20, status: "extracted" as const };
+  const extra = { orderNumber: "OTHER", deliveryTime: "other", deliveryEarliest: new Date("2026-07-01T00:00:00.000Z"), deliveryLatest: new Date("2026-07-01T00:00:00.000Z"), status: "extracted" as const };
   const r = mergeMissing(base, extra);
-  assert.equal(r.numarComanda, "KEEP");
+  assert.equal(r.orderNumber, "KEEP");
   assert.equal(r.deliveryEarliest?.toISOString(), D20.toISOString());
 });
 
 test("mergeMissing leaves base unchanged when extra is all null", () => {
-  const base = { numarComanda: "CMD9", timpLivrare: null, deliveryEarliest: null, deliveryLatest: null, status: "needs_review" as const };
-  const extra = { numarComanda: null, timpLivrare: null, deliveryEarliest: null, deliveryLatest: null, status: "needs_review" as const };
+  const base = { orderNumber: "CMD9", deliveryTime: null, deliveryEarliest: null, deliveryLatest: null, status: "needs_review" as const };
+  const extra = { orderNumber: null, deliveryTime: null, deliveryEarliest: null, deliveryLatest: null, status: "needs_review" as const };
   const r = mergeMissing(base, extra);
-  assert.equal(r.numarComanda, "CMD9");
+  assert.equal(r.orderNumber, "CMD9");
   assert.equal(r.status, "needs_review");
 });
 ```
@@ -474,8 +474,8 @@ async function extractForOrder(
   let result: ExtractionResult = reply?.body
     ? await deps.extractOrderInfo({ kind: "text", body: reply.body }, today)
     : {
-        numarComanda: null,
-        timpLivrare: null,
+        orderNumber: null,
+        deliveryTime: null,
         deliveryEarliest: null,
         deliveryLatest: null,
         status: "needs_review",
@@ -508,8 +508,8 @@ async function extractForOrder(
   await deps.prisma.order.update({
     where: { id: orderId },
     data: {
-      numarComanda: result.numarComanda,
-      timpLivrare: result.timpLivrare,
+      orderNumber: result.orderNumber,
+      deliveryTime: result.deliveryTime,
       deliveryEarliest: result.deliveryEarliest,
       deliveryLatest: result.deliveryLatest,
       replyStatus: result.status,
@@ -546,8 +546,8 @@ const D20 = new Date("2026-06-20T00:00:00.000Z");
 // body gives the order number only; any binary (PDF/image) gives the delivery only.
 const splitExtractor = async (source: any) =>
   source.kind === "binary"
-    ? { numarComanda: null, timpLivrare: "20 iunie", deliveryEarliest: D20, deliveryLatest: D20, status: "needs_review" as const }
-    : { numarComanda: "CMD9", timpLivrare: null, deliveryEarliest: null, deliveryLatest: null, status: "needs_review" as const };
+    ? { orderNumber: null, deliveryTime: "20 iunie", deliveryEarliest: D20, deliveryLatest: D20, status: "needs_review" as const }
+    : { orderNumber: "CMD9", deliveryTime: null, deliveryEarliest: null, deliveryLatest: null, status: "needs_review" as const };
 
 test("extract phase fills missing fields from an image attachment and reaches extracted", async () => {
   let attCalled = false;
@@ -570,7 +570,7 @@ test("extract phase fills missing fields from an image attachment and reaches ex
   assert.equal(attCalled, true);
   const update = state.replyUpdates.find((u) => u.id === "O4");
   assert.ok(update);
-  assert.equal(update.numarComanda, "CMD9");
+  assert.equal(update.orderNumber, "CMD9");
   assert.equal(update.deliveryEarliest?.toISOString(), D20.toISOString());
   assert.equal(update.replyStatus, "extracted");
 });
@@ -588,7 +588,7 @@ test("extract phase tries PDFs before images", async () => {
       // every source yields nothing useful, so all attachments are tried in order
       extractOrderInfo: async (source: any) => {
         if (source.kind === "binary") mimes.push(source.mimeType);
-        return { numarComanda: null, timpLivrare: null, deliveryEarliest: null, deliveryLatest: null, status: "needs_review" as const };
+        return { orderNumber: null, deliveryTime: null, deliveryEarliest: null, deliveryLatest: null, status: "needs_review" as const };
       },
       listFileAttachments: async () => [
         { name: "foto.png", contentType: "image/png", bytes: new Uint8Array([1]) },
@@ -612,7 +612,7 @@ test("extract phase ignores unsupported attachment types", async () => {
     makeDeps(state, [], {
       extractOrderInfo: async (source: any) => {
         if (source.kind === "binary") binaryCalled = true;
-        return { numarComanda: "CMD9", timpLivrare: null, deliveryEarliest: null, deliveryLatest: null, status: "needs_review" as const };
+        return { orderNumber: "CMD9", deliveryTime: null, deliveryEarliest: null, deliveryLatest: null, status: "needs_review" as const };
       },
       listFileAttachments: async () => [
         { name: "notes.docx", contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", bytes: new Uint8Array([1]) },
@@ -634,7 +634,7 @@ test("extract phase does not fetch attachments when the body already extracted",
   };
   await pollReplies(
     makeDeps(state, [], {
-      extractOrderInfo: async () => ({ numarComanda: "CMD9", timpLivrare: "20 iunie", deliveryEarliest: D20, deliveryLatest: D20, status: "extracted" as const }),
+      extractOrderInfo: async () => ({ orderNumber: "CMD9", deliveryTime: "20 iunie", deliveryEarliest: D20, deliveryLatest: D20, status: "extracted" as const }),
       listFileAttachments: async () => {
         attCalled = true;
         return [];

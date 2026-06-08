@@ -8,7 +8,7 @@ _Updated: 2026-06-01 (Phases 2 & 3 + status-request email shipped). Branch: `fea
 
 ## Goal (one line)
 Automate supplier part-ordering email: send a request, then poll for the human-written
-reply and extract **order number** (`numarComanda`) + **delivery date** (`timpLivrare`)
+reply and extract **order number** (`orderNumber`) + **delivery date** (`deliveryTime`)
 from unstructured text. **Phase 1 (send), Phase 2 (poll), Phase 3 (extract, body-only),
 and the 1-day-before-delivery "Status?" nudge are all implemented** and pass tests. The
 remaining gap is operational: **one Prisma migration is deferred** until the DB is up
@@ -38,7 +38,7 @@ remaining gap is operational: **one Prisma migration is deferred** until the DB 
 - **Phase 3 — extract** (`lib/extraction.ts`): **Gemini Flash** (`@google/genai`,
   `GOOGLE_LLM_API_KEY`, JSON `responseSchema`) over reply **body**, with an **attachment
   vision fallback**. Extract phase processes every `reply_received` order → writes
-  `numarComanda` + verbatim `timpLivrare` + normalized `deliveryEarliest`/`deliveryLatest`;
+  `orderNumber` + verbatim `deliveryTime` + normalized `deliveryEarliest`/`deliveryLatest`;
   status → `extracted` or `needs_review`; LLM failure stays `reply_received` (retry).
   **Logprob confidence was removed** — now trusts model null/non-null + ISO-date
   validation. Frontend shows a delivery countdown + `needs_review` badge.

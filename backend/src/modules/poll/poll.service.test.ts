@@ -75,8 +75,8 @@ function makeDeps(state: State, messages: GraphMessage[], overrides: Partial<Pol
     createAndSendMail: async () => ({ internetMessageId: "<sent@x>" }),
     listFileAttachments: async () => [],
     extractOrderInfo: async () => ({
-      numarComanda: null,
-      timpLivrare: null,
+      orderNumber: null,
+      deliveryTime: null,
       deliveryEarliest: null,
       deliveryLatest: null,
       status: "needs_review" as const,
@@ -168,8 +168,8 @@ test("extract phase writes fields and sets extracted on a confident result", asy
   await pollReplies(
     makeDeps(state, [], {
       extractOrderInfo: async () => ({
-        numarComanda: "CMD42",
-        timpLivrare: "20 iunie",
+        orderNumber: "CMD42",
+        deliveryTime: "20 iunie",
         deliveryEarliest: new Date("2026-06-20T00:00:00.000Z"),
         deliveryLatest: new Date("2026-06-20T00:00:00.000Z"),
         status: "extracted" as const,
@@ -179,8 +179,8 @@ test("extract phase writes fields and sets extracted on a confident result", asy
 
   const update = state.replyUpdates.find((u) => u.id === "O2");
   assert.ok(update, "expected an update for O2");
-  assert.equal(update.numarComanda, "CMD42");
-  assert.equal(update.timpLivrare, "20 iunie");
+  assert.equal(update.orderNumber, "CMD42");
+  assert.equal(update.deliveryTime, "20 iunie");
   assert.equal(update.deliveryEarliest?.toISOString(), "2026-06-20T00:00:00.000Z");
   assert.equal(update.replyStatus, "extracted");
 });
@@ -195,8 +195,8 @@ test("extract phase sets needs_review when the extractor flags it", async () => 
   await pollReplies(
     makeDeps(state, [], {
       extractOrderInfo: async () => ({
-        numarComanda: "CMD42",
-        timpLivrare: null,
+        orderNumber: "CMD42",
+        deliveryTime: null,
         deliveryEarliest: null,
         deliveryLatest: null,
         status: "needs_review" as const,
@@ -207,7 +207,7 @@ test("extract phase sets needs_review when the extractor flags it", async () => 
   const update = state.replyUpdates.find((u) => u.id === "O2");
   assert.ok(update);
   assert.equal(update.replyStatus, "needs_review");
-  assert.equal(update.numarComanda, "CMD42");
+  assert.equal(update.orderNumber, "CMD42");
   assert.equal(update.deliveryEarliest, null);
 });
 
@@ -242,8 +242,8 @@ test("extract phase sets needs_review and skips the LLM when the reply body is e
       extractOrderInfo: async () => {
         called = true;
         return {
-          numarComanda: null,
-          timpLivrare: null,
+          orderNumber: null,
+          deliveryTime: null,
           deliveryEarliest: null,
           deliveryLatest: null,
           status: "needs_review" as const,
@@ -357,8 +357,8 @@ const D20 = new Date("2026-06-20T00:00:00.000Z");
 
 const splitExtractor = async (source: any) =>
   source.kind === "binary"
-    ? { numarComanda: null, timpLivrare: "20 iunie", deliveryEarliest: D20, deliveryLatest: D20, status: "needs_review" as const }
-    : { numarComanda: "CMD9", timpLivrare: null, deliveryEarliest: null, deliveryLatest: null, status: "needs_review" as const };
+    ? { orderNumber: null, deliveryTime: "20 iunie", deliveryEarliest: D20, deliveryLatest: D20, status: "needs_review" as const }
+    : { orderNumber: "CMD9", deliveryTime: null, deliveryEarliest: null, deliveryLatest: null, status: "needs_review" as const };
 
 test("extract phase fills missing fields from an image attachment and reaches extracted", async () => {
   let attCalled = false;
@@ -381,7 +381,7 @@ test("extract phase fills missing fields from an image attachment and reaches ex
   assert.equal(attCalled, true);
   const update = state.replyUpdates.find((u) => u.id === "O4");
   assert.ok(update);
-  assert.equal(update.numarComanda, "CMD9");
+  assert.equal(update.orderNumber, "CMD9");
   assert.equal(update.deliveryEarliest?.toISOString(), D20.toISOString());
   assert.equal(update.replyStatus, "extracted");
 });
@@ -398,7 +398,7 @@ test("extract phase tries PDFs before images", async () => {
     makeDeps(state, [], {
       extractOrderInfo: async (source: any) => {
         if (source.kind === "binary") mimes.push(source.mimeType);
-        return { numarComanda: null, timpLivrare: null, deliveryEarliest: null, deliveryLatest: null, status: "needs_review" as const };
+        return { orderNumber: null, deliveryTime: null, deliveryEarliest: null, deliveryLatest: null, status: "needs_review" as const };
       },
       listFileAttachments: async () => [
         { name: "foto.png", contentType: "image/png", bytes: new Uint8Array([1]) },
@@ -422,7 +422,7 @@ test("extract phase ignores unsupported attachment types", async () => {
     makeDeps(state, [], {
       extractOrderInfo: async (source: any) => {
         if (source.kind === "binary") binaryCalled = true;
-        return { numarComanda: "CMD9", timpLivrare: null, deliveryEarliest: null, deliveryLatest: null, status: "needs_review" as const };
+        return { orderNumber: "CMD9", deliveryTime: null, deliveryEarliest: null, deliveryLatest: null, status: "needs_review" as const };
       },
       listFileAttachments: async () => [
         { name: "notes.docx", contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", bytes: new Uint8Array([1]) },
@@ -444,7 +444,7 @@ test("extract phase does not fetch attachments when the body already extracted",
   };
   await pollReplies(
     makeDeps(state, [], {
-      extractOrderInfo: async () => ({ numarComanda: "CMD9", timpLivrare: "20 iunie", deliveryEarliest: D20, deliveryLatest: D20, status: "extracted" as const }),
+      extractOrderInfo: async () => ({ orderNumber: "CMD9", deliveryTime: "20 iunie", deliveryEarliest: D20, deliveryLatest: D20, status: "extracted" as const }),
       listFileAttachments: async () => {
         attCalled = true;
         return [];

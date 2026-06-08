@@ -10,7 +10,7 @@ _Date: 2026-06-01. Branch: `feat/new-order-email`. Single-user app._
 
 When body-only extraction leaves an order `needs_review` and its reply has attachments,
 send each supported attachment (**PDF, JPEG, PNG**) to Gemini as an inline binary part and
-run the same extraction to fill the missing `numarComanda` / delivery date. Gemini OCRs
+run the same extraction to fill the missing `orderNumber` / delivery date. Gemini OCRs
 scanned PDFs and photos itself — no separate OCR/rasterizer dependency.
 
 ## Extractor strategy (`lib/extraction.ts`)
@@ -41,7 +41,7 @@ export interface ExtractionDeps {
 
 `buildTextPrompt` is today's prompt (with the body inlined). `buildBinaryPrompt` is the
 same instruction set but phrased for "the attached document/image" instead of inlined text
-(today's date, ISO dates, ranges, never invent, `timpLivrare` verbatim).
+(today's date, ISO dates, ranges, never invent, `deliveryTime` verbatim).
 
 `defaultGenerate(parts)`:
 ```ts
@@ -111,7 +111,7 @@ const reply = findFirst(orderId, orderBy receivedDateTime desc, select { body, g
 const today = deps.now().toISOString().slice(0, 10);
 let result = reply?.body
   ? await deps.extractOrderInfo({ kind: "text", body: reply.body }, today)
-  : { numarComanda: null, timpLivrare: null, deliveryEarliest: null, deliveryLatest: null, status: "needs_review" };
+  : { orderNumber: null, deliveryTime: null, deliveryEarliest: null, deliveryLatest: null, status: "needs_review" };
 
 if (result.status !== "extracted" && reply?.hasAttachments && accessToken && reply.graphMessageId) {
   const atts = await deps.listFileAttachments(accessToken, reply.graphMessageId);
@@ -125,7 +125,7 @@ if (result.status !== "extracted" && reply?.hasAttachments && accessToken && rep
   }
 }
 
-await deps.prisma.order.update({ where: { id: orderId }, data: { numarComanda, timpLivrare, deliveryEarliest, deliveryLatest, replyStatus: result.status } });
+await deps.prisma.order.update({ where: { id: orderId }, data: { orderNumber, deliveryTime, deliveryEarliest, deliveryLatest, replyStatus: result.status } });
 ```
 
 The single `order.update` is last, so a failed/oversized vision call (caught per-order in

@@ -6,7 +6,7 @@ When the user submits the **New order** dialog (frontend), the backend persists 
 `backend/templates/status-request-template`, sent from the logged-in user's mailbox
 via Microsoft Graph. The sent message's `internetMessageId` is persisted so a future
 supplier reply can later be matched back to the order (the reply will supply
-`numarComanda` and `timpLivrare`, which are null at creation).
+`orderNumber` and `deliveryTime`, which are null at creation).
 
 ## Status
 **Implementation complete and verified, but NOTHING IS COMMITTED.**
@@ -51,8 +51,8 @@ Untracked (new):
    - Open `http://localhost:5173` — MUST be this origin, not ngrok (cookie auth is
      same-origin; memory `dev-auth-same-origin`). Log in with Microsoft.
    - Open New-order dialog, fill `emailFurnizor` (an inbox you control), `serieSasiu`,
-     `piesa`, submit. Dialog should close; order appears in table with `numarComanda`
-     and `timpLivrare` as "—".
+     `piesa`, submit. Dialog should close; order appears in table with `orderNumber`
+     and `deliveryTime` as "—".
    - Confirm the supplier inbox received the rendered template.
    - `cd backend && npm run db:studio` → `Order` table → confirm new row has
      `emailStatus="trimis"` and non-null `internetMessageId`.
@@ -62,7 +62,7 @@ Untracked (new):
 - **Decisions made during brainstorming (user-approved):**
   - Persist order even when email send fails — keep it with `emailStatus="esuat"`
     (NOT rolled back). Success → `emailStatus="trimis"`.
-  - `numarComanda` and `timpLivrare` are intentionally null at creation; they come
+  - `orderNumber` and `deliveryTime` are intentionally null at creation; they come
     later from the supplier's reply (reply-ingestion is a FUTURE feature, out of scope).
   - Email subject: `Cerere comandă piesă — ${serieSasiu}` (em-dash, Romanian).
   - Orders live under `backend/src/modules/` (domain features), NOT `system/`

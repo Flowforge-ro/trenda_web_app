@@ -7,7 +7,7 @@ _Date: 2026-06-01. Branch: `feat/new-order-email`. Single-user app._
 A background job polls the (single) user's mailbox every 5 minutes, finds supplier
 replies to orders we sent, and matches each reply back to its `Order` via the stored
 `internetMessageId`. On a match it records the reply and flags the order so Phase 3
-(extraction of `numarComanda` / `timpLivrare`) can pick it up later.
+(extraction of `orderNumber` / `deliveryTime`) can pick it up later.
 
 Phase 2 **ingests + flags only**. No parsing, no attachment bytes, no OCR/LLM.
 
@@ -142,7 +142,7 @@ Unit tests (Vitest, fakes — no DB/Graph):
 
 ## Out of scope (Phase 3)
 
-Parsing `numarComanda` / `timpLivrare`, fetching attachment bytes, OCR, LLM extraction,
+Parsing `orderNumber` / `deliveryTime`, fetching attachment bytes, OCR, LLM extraction,
 date normalization, multiple-reply reconciliation beyond storing each `OrderReply`.
 
 ## Constraints carried forward
