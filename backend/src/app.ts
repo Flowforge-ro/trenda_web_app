@@ -8,6 +8,7 @@ import { authRoutes } from "./system/auth/auth.routes.js";
 import { ordersRoutes } from "./modules/orders/orders.routes.js";
 import { organizationsRoutes } from "./modules/organizations/organizations.routes.js";
 import { usersRoutes } from "./modules/users/users.routes.js";
+import { mailboxesRoutes } from "./modules/mailboxes/mailboxes.routes.js";
 
 const isProd = process.env.NODE_ENV === "production";
 
@@ -67,5 +68,6 @@ await app.register(authRoutes);
 await app.register(ordersRoutes);
 await app.register(organizationsRoutes);
 await app.register(usersRoutes);
+await app.register(mailboxesRoutes);
 
 export { app };
