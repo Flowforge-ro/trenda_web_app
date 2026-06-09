@@ -17,7 +17,7 @@ function makeDeps(overrides: Partial<OrderDeps> = {}): OrderDeps {
         create: async ({ data }: any) => ({ id: "O1", ...data }),
         update: async ({ where, data }: any) => ({ id: where.id, mailboxId: "M1", ...data }),
         findFirst: async ({ where }: any) =>
-          where.orgId === "O1" ? { id: where.id, orgId: "O1", mailboxId: "M1", ...input } : null,
+          where.orgId === "O1" ? { id: where.id, orgId: "O1", ...input } : null,
         findMany: async ({ where }: any) => (where.orgId === "O1" ? [{ id: "O1" }] : []),
       },
     } as any,
