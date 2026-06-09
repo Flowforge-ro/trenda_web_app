@@ -1,36 +1,36 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
+  Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
 import { useCreateOrder } from "@/lib/orders";
+import { useMailboxes } from "@/lib/mailboxes";
 
 interface NewOrderForm {
   emailFurnizor: string;
   serieSasiu: string;
   piesa: string;
+  mailboxId: string;
 }
 
-const emptyForm: NewOrderForm = {
-  emailFurnizor: "",
-  serieSasiu: "",
-  piesa: "",
-};
+const emptyForm: NewOrderForm = { emailFurnizor: "", serieSasiu: "", piesa: "", mailboxId: "" };
 
 export function NewOrderDialog() {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<NewOrderForm>(emptyForm);
   const createOrder = useCreateOrder();
+  const { data: mailboxes = [] } = useMailboxes();
+  const vendorMailboxes = mailboxes.filter((m) => m.type === "vendor_facing");
+
+  // Default to the only vendor mailbox when the dialog opens.
+  useEffect(() => {
+    if (open && !form.mailboxId && vendorMailboxes.length === 1) {
+      setForm((prev) => ({ ...prev, mailboxId: vendorMailboxes[0].id }));
+    }
+  }, [open, vendorMailboxes, form.mailboxId]);
 
   function update<K extends keyof NewOrderForm>(key: K, value: string) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -40,9 +40,7 @@ export function NewOrderDialog() {
     e.preventDefault();
     createOrder.mutate(form, {
       onSuccess: ({ emailSent }) => {
-        if (!emailSent) {
-          alert("Comanda a fost salvată, dar emailul nu a putut fi trimis.");
-        }
+        if (!emailSent) alert("Comanda a fost salvată, dar emailul nu a putut fi trimis.");
         setForm(emptyForm);
         setOpen(false);
       },
@@ -59,55 +57,49 @@ export function NewOrderDialog() {
         <form onSubmit={handleSubmit}>
           <DialogHeader>
             <DialogTitle>Comandă nouă</DialogTitle>
-            <DialogDescription>
-              Completează detaliile comenzii de piese.
-            </DialogDescription>
+            <DialogDescription>Completează detaliile comenzii de piese.</DialogDescription>
           </DialogHeader>
 
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
+              <Label htmlFor="mailboxId">Cutie poștală (furnizor)</Label>
+              {vendorMailboxes.length === 0 ? (
+                <p className="text-sm text-error">
+                  Nicio cutie poștală pentru furnizori. Conectează una în Setări.
+                </p>
+              ) : (
+                <select
+                  id="mailboxId"
+                  required
+                  value={form.mailboxId}
+                  onChange={(e) => update("mailboxId", e.target.value)}
+                  className="h-8 rounded-lg border border-input bg-transparent px-2 text-sm"
+                >
+                  <option value="" disabled>Alege o cutie poștală</option>
+                  {vendorMailboxes.map((m) => (
+                    <option key={m.id} value={m.id}>{m.email}</option>
+                  ))}
+                </select>
+              )}
+            </div>
+            <div className="grid gap-2">
               <Label htmlFor="emailFurnizor">Email furnizor</Label>
-              <Input
-                id="emailFurnizor"
-                type="email"
-                required
-                placeholder="furnizor@exemplu.ro"
-                value={form.emailFurnizor}
-                onChange={(e) => update("emailFurnizor", e.target.value)}
-              />
+              <Input id="emailFurnizor" type="email" required placeholder="furnizor@exemplu.ro" value={form.emailFurnizor} onChange={(e) => update("emailFurnizor", e.target.value)} />
             </div>
             <div className="grid gap-2">
               <Label htmlFor="serieSasiu">Serie sasiu</Label>
-              <Input
-                id="serieSasiu"
-                required
-                placeholder="WVWZZZ1KZAW000001"
-                value={form.serieSasiu}
-                onChange={(e) => update("serieSasiu", e.target.value)}
-              />
+              <Input id="serieSasiu" required placeholder="WVWZZZ1KZAW000001" value={form.serieSasiu} onChange={(e) => update("serieSasiu", e.target.value)} />
             </div>
             <div className="grid gap-2">
               <Label htmlFor="piesa">Piesa</Label>
-              <Input
-                id="piesa"
-                required
-                placeholder="Filtru ulei"
-                value={form.piesa}
-                onChange={(e) => update("piesa", e.target.value)}
-              />
+              <Input id="piesa" required placeholder="Filtru ulei" value={form.piesa} onChange={(e) => update("piesa", e.target.value)} />
             </div>
           </div>
 
-          {createOrder.isError && (
-            <p className="text-sm text-error">
-              Crearea comenzii a eșuat. Încearcă din nou.
-            </p>
-          )}
+          {createOrder.isError && <p className="text-sm text-error">Crearea comenzii a eșuat. Încearcă din nou.</p>}
           <DialogFooter>
-            <DialogClose render={<Button type="button" variant="outline" />}>
-              Anulează
-            </DialogClose>
-            <Button type="submit" disabled={createOrder.isPending}>
+            <DialogClose render={<Button type="button" variant="outline" />}>Anulează</DialogClose>
+            <Button type="submit" disabled={createOrder.isPending || !form.mailboxId}>
               {createOrder.isPending ? "Se trimite..." : "Trimite"}
             </Button>
           </DialogFooter>

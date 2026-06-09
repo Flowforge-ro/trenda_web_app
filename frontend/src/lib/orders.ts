@@ -20,6 +20,7 @@ export interface NewOrderPayload {
   emailFurnizor: string;
   serieSasiu: string;
   piesa: string;
+  mailboxId: string;
 }
 
 interface CreateOrderResult {
