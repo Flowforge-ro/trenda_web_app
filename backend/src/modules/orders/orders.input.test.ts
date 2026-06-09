@@ -7,6 +7,7 @@ test("orderInputSchema accepts a valid payload", () => {
     emailFurnizor: "f@ex.ro",
     serieSasiu: "WVW001",
     piesa: "Filtru",
+    mailboxId: "M1",
   });
   assert.equal(r.success, true);
 });
@@ -16,6 +17,7 @@ test("orderInputSchema rejects a malformed email", () => {
     emailFurnizor: "not-an-email",
     serieSasiu: "WVW001",
     piesa: "Filtru",
+    mailboxId: "M1",
   });
   assert.equal(r.success, false);
 });
@@ -25,6 +27,7 @@ test("orderInputSchema rejects an empty piesa", () => {
     emailFurnizor: "f@ex.ro",
     serieSasiu: "WVW001",
     piesa: "",
+    mailboxId: "M1",
   });
   assert.equal(r.success, false);
 });
@@ -34,11 +37,12 @@ test("orderInputSchema rejects an empty serieSasiu", () => {
     emailFurnizor: "f@ex.ro",
     serieSasiu: "",
     piesa: "Filtru",
+    mailboxId: "M1",
   });
   assert.equal(r.success, false);
 });
 
-test("orderInputSchema rejects a missing field", () => {
-  const r = orderInputSchema.safeParse({ emailFurnizor: "f@ex.ro", serieSasiu: "WVW001" });
+test("orderInputSchema rejects a missing mailboxId", () => {
+  const r = orderInputSchema.safeParse({ emailFurnizor: "f@ex.ro", serieSasiu: "WVW001", piesa: "Filtru" });
   assert.equal(r.success, false);
 });
