@@ -16,7 +16,10 @@ export default defineConfig({
     proxy: {
       "/auth": "http://localhost:3000",
       "/health": "http://localhost:3000",
-      "/orders": "http://localhost:3000"
+      "/orders": "http://localhost:3000",
+      "/mailboxes": "http://localhost:3000",
+      "/organizations": "http://localhost:3000",
+      "/users": "http://localhost:3000",
     },
   },
 });
