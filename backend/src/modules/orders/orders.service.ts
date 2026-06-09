@@ -4,7 +4,7 @@ import { decrypt, encrypt } from "../../lib/crypto.js";
 import { getAccessTokenFromRefreshToken, createAndSendMail } from "../../lib/microsoft.js";
 import { renderStatusRequest } from "../../lib/template.js";
 import { getMailboxAccessToken } from "../../lib/mailbox-token.js";
-import { logger } from "../../lib/logger.js";
+import { logError } from "../../lib/db-log.js";
 import type { Order } from "../../generated/prisma/client.js";
 
 export const orderInputSchema = z.object({
@@ -85,7 +85,7 @@ async function sendOrderEmail(
     });
     return { order: updated, emailSent: true };
   } catch (err) {
-    logger.error({ err, orderId: order.id }, "Order email failed");
+    logError("Order email failed", err, { orderId: order.id });
     const updated = await deps.prisma.order.update({
       where: { id: order.id },
       data: { emailStatus: "esuat" },

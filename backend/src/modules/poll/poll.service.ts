@@ -4,7 +4,7 @@ import { getAccessTokenFromRefreshToken, listMessagesSince, createAndSendMail, l
 import { extractOrderInfo, mergeMissing, type ExtractionResult, type ExtractionSource } from "../../lib/extraction.js";
 import { getMailboxAccessToken } from "../../lib/mailbox-token.js";
 import { matchReply, normalizeMessageId } from "./matching.js";
-import { logger } from "../../lib/logger.js";
+import { logError } from "../../lib/db-log.js";
 import type { Order } from "../../generated/prisma/client.js";
 
 export interface PollDeps {
@@ -64,7 +64,7 @@ async function ingestReplies(deps: PollDeps): Promise<void> {
     try {
       await pollMailbox(mailboxId, orders, deps);
     } catch (err) {
-      logger.error({ err, mailboxId }, "Poll failed for mailbox");
+      logError("Poll failed for mailbox", err, { mailboxId });
     }
   }
 }
@@ -81,13 +81,13 @@ async function extractPending(deps: PollDeps): Promise<void> {
     try {
       accessToken = await getMailboxAccessToken(deps, order.mailboxId);
     } catch (err) {
-      logger.error({ err, mailboxId: order.mailboxId }, "Token refresh failed for mailbox");
+      logError("Token refresh failed for mailbox", err, { mailboxId: order.mailboxId });
     }
     try {
       await extractForOrder(order.id, accessToken, deps);
     } catch (err) {
       // A hard failure leaves the order at "reply_received" so the next poll retries it.
-      logger.error({ err, orderId: order.id }, "Extraction failed for order");
+      logError("Extraction failed for order", err, { orderId: order.id });
     }
   }
 }
@@ -162,7 +162,7 @@ async function requestStatusUpdates(deps: PollDeps): Promise<void> {
       await deps.prisma.order.update({ where: { id: order.id }, data: { statusRequestSentAt: now } });
     } catch (err) {
       // Leave statusRequestSentAt null so the next poll retries this order.
-      logger.error({ err, orderId: order.id }, "Status request failed for order");
+      logError("Status request failed for order", err, { orderId: order.id });
     }
   }
 }

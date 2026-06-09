@@ -85,3 +85,21 @@ model OrderReply {
   body              String?
   createdAt         DateTime @default(now())
 }
+
+model Log {
+  id        String   @id @default(cuid())
+  level     String // "info" | "warn" | "error"
+  source    String // "frontend" | "backend"
+  message   String
+  stack     String?
+  context   Json?
+  userId    String?
+  orgId     String?
+  url       String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([level])
+  @@index([source])
+}

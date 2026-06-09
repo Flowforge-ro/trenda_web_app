@@ -37,6 +37,20 @@ test("an unknown route returns a 404 JSON error from the not-found handler", asy
   assert.deepEqual(res.json(), { error: "Not Found" });
 });
 
+test("POST /logs accepts an anonymous frontend log entry (204)", async () => {
+  const res = await app.inject({
+    method: "POST",
+    url: "/logs",
+    payload: { level: "info", message: "user.login", context: { role: "admin" } },
+  });
+  assert.equal(res.statusCode, 204);
+});
+
+test("POST /logs rejects a malformed entry (400)", async () => {
+  const res = await app.inject({ method: "POST", url: "/logs", payload: { level: "bogus" } });
+  assert.equal(res.statusCode, 400);
+});
+
 test.after(async () => {
   await app.close();
 });
