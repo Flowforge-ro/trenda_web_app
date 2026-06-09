@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { API_BASE } from "./api";
+import { logAction } from "./logger";
 
 export interface OrgUser {
   id: string;
@@ -41,6 +42,9 @@ export function useCreateUser() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: createUser,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["users"] }),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["users"] });
+      logAction("user.create", { userId: data?.user?.id, role: data?.user?.role });
+    },
   });
 }

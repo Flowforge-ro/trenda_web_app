@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { API_BASE } from "./api";
+import { logAction } from "./logger";
 
 export interface Organization {
   id: string;
@@ -39,6 +40,9 @@ export function useCreateOrganization() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: createOrganization,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["organizations"] }),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["organizations"] });
+      logAction("organization.create", { orgId: data?.org?.id });
+    },
   });
 }

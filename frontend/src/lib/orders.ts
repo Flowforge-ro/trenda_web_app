@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { API_BASE } from "./api";
+import { logAction } from "./logger";
 
 export interface Order {
   id: string;
@@ -62,7 +63,10 @@ export function useResendOrder() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: resendOrder,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["orders"] }),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["orders"] });
+      logAction("order.resend", { orderId: data.order.id, emailSent: data.emailSent });
+    },
   });
 }
 
@@ -95,7 +99,10 @@ export function useCreateOrder() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: createOrder,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["orders"] }),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["orders"] });
+      logAction("order.create", { orderId: data.order.id, emailSent: data.emailSent });
+    },
   });
 }
 
@@ -165,6 +172,7 @@ export function useSaveReview() {
     onSuccess: (_data, { id }) => {
       qc.invalidateQueries({ queryKey: ["orders"] });
       qc.invalidateQueries({ queryKey: ["order-review", id] });
+      logAction("order.review.save", { orderId: id });
     },
   });
 }

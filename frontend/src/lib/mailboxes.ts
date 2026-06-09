@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { API_BASE } from "./api";
+import { logAction } from "./logger";
 
 export type MailboxType = "vendor_facing" | "client_facing";
 
@@ -36,6 +37,9 @@ export function useDisconnectMailbox() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: disconnectMailbox,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["mailboxes"] }),
+    onSuccess: (_data, id) => {
+      qc.invalidateQueries({ queryKey: ["mailboxes"] });
+      logAction("mailbox.disconnect", { mailboxId: id });
+    },
   });
 }

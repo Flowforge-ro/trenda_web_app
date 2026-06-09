@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { API_BASE } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { logAction } from "@/lib/logger";
 import { cn } from "@/lib/utils";
 
 const navItems = [
@@ -24,6 +25,7 @@ const navItems = [
 ];
 
 async function logout() {
+  logAction("logout");
   await fetch(`${API_BASE}/auth/logout`, {
     method: "POST",
     credentials: "include",

@@ -9,6 +9,7 @@ import {
 import { useAuth } from "@/lib/auth";
 import { useMailboxes, useDisconnectMailbox, connectMailboxUrl, type MailboxType } from "@/lib/mailboxes";
 import { useUsers, useCreateUser } from "@/lib/users";
+import { logAction } from "@/lib/logger";
 
 function MailboxesSection({ isAdmin }: { isAdmin: boolean }) {
   const { data: mailboxes = [], isLoading } = useMailboxes();
@@ -29,7 +30,7 @@ function MailboxesSection({ isAdmin }: { isAdmin: boolean }) {
               <option value="vendor_facing">Furnizori</option>
               <option value="client_facing">Clienți</option>
             </select>
-            <Button onClick={() => { window.location.href = connectMailboxUrl(type); }}>
+            <Button onClick={() => { logAction("mailbox.connect.start", { type }); window.location.href = connectMailboxUrl(type); }}>
               <Plus />
               Conectează
             </Button>

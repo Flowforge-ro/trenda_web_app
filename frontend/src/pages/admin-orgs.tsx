@@ -9,8 +9,10 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useOrganizations, useCreateOrganization } from "@/lib/organizations";
 import { useAuth } from "@/lib/auth";
+import { logAction } from "@/lib/logger";
 
 async function logout() {
+  logAction("logout");
   await fetch("/auth/logout", { method: "POST", credentials: "include" });
   window.location.href = "/login";
 }

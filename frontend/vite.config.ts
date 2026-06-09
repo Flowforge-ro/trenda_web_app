@@ -20,6 +20,7 @@ export default defineConfig({
       "/mailboxes": "http://localhost:3000",
       "/organizations": "http://localhost:3000",
       "/users": "http://localhost:3000",
+      "/logs": "http://localhost:3000",
     },
   },
 });
