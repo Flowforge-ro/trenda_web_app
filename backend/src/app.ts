@@ -1,4 +1,5 @@
 import { STATUS_CODES } from "node:http";
+import { randomUUID } from "node:crypto";
 import Fastify, { type FastifyError } from "fastify";
 import cors from "@fastify/cors";
 import cookie from "@fastify/cookie";
@@ -16,7 +17,18 @@ import { logsRoutes } from "./system/logs/logs.routes.js";
 
 const isProd = process.env.NODE_ENV === "production";
 
-const app = Fastify({ loggerInstance: logger });
+// Honor a client-supplied `x-request-id` as the Fastify request id (else generate one)
+// so a frontend action and the backend logs for the request it triggered share an id.
+const app = Fastify({
+  loggerInstance: logger,
+  requestIdHeader: "x-request-id",
+  genReqId: () => randomUUID(),
+});
+
+// Echo the request id back so the client can see/store the resolved id.
+app.addHook("onRequest", async (request, reply) => {
+  reply.header("x-request-id", request.id);
+});
 
 await app.register(cors, {
   origin: [
@@ -90,6 +102,7 @@ app.setErrorHandler((error: FastifyError, request, reply) => {
       message: error.message,
       stack: error.stack ?? null,
       context: { method: request.method, statusCode: status },
+      requestId: request.id,
       url: request.url,
       userId: request.session?.get("userId") ?? null,
     });

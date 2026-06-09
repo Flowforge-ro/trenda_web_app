@@ -93,6 +93,7 @@ model Log {
   message   String
   stack     String?
   context   Json?
+  requestId String? // correlates a frontend action to the backend request it triggered
   userId    String?
   orgId     String?
   url       String?
@@ -102,4 +103,5 @@ model Log {
   @@index([createdAt])
   @@index([level])
   @@index([source])
+  @@index([requestId])
 }

@@ -8,6 +8,7 @@ const entrySchema = z.object({
   message: z.string().min(1).max(4000),
   stack: z.string().max(20000).optional(),
   context: z.unknown().optional(),
+  requestId: z.string().max(200).optional(),
   url: z.string().max(2000).optional(),
 });
 
@@ -34,6 +35,7 @@ export const logsRoutes: FastifyPluginAsync = async (app) => {
           message: e.message,
           stack: e.stack ?? null,
           context: e.context,
+          requestId: e.requestId ?? request.id,
           url: e.url ?? null,
           userId: user?.id ?? null,
           orgId: user?.orgId ?? null,

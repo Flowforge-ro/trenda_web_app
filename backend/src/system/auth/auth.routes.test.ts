@@ -51,6 +51,11 @@ test("POST /logs rejects a malformed entry (400)", async () => {
   assert.equal(res.statusCode, 400);
 });
 
+test("a client-supplied x-request-id is echoed back in the response", async () => {
+  const res = await app.inject({ method: "GET", url: "/auth/me", headers: { "x-request-id": "corr-123" } });
+  assert.equal(res.headers["x-request-id"], "corr-123");
+});
+
 test.after(async () => {
   await app.close();
 });

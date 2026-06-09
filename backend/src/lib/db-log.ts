@@ -7,6 +7,7 @@ export interface LogEntry {
   message: string;
   stack?: string | null;
   context?: unknown;
+  requestId?: string | null;
   userId?: string | null;
   orgId?: string | null;
   url?: string | null;
@@ -25,6 +26,7 @@ export async function writeLog(entry: LogEntry): Promise<void> {
         message: entry.message.slice(0, 4000),
         stack: entry.stack ?? null,
         context: entry.context === undefined ? undefined : (entry.context as object),
+        requestId: entry.requestId ?? null,
         userId: entry.userId ?? null,
         orgId: entry.orgId ?? null,
         url: entry.url ?? null,
