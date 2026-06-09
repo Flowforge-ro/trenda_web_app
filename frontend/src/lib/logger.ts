@@ -7,6 +7,7 @@ interface ClientLog {
   message: string;
   stack?: string;
   context?: Record<string, unknown>;
+  requestId?: string;
   url?: string;
 }
 
@@ -30,8 +31,8 @@ function post(entry: ClientLog): void {
 export const log = {
   info: (message: string, context?: Record<string, unknown>) => post({ level: "info", message, context }),
   warn: (message: string, context?: Record<string, unknown>) => post({ level: "warn", message, context }),
-  error: (message: string, opts?: { stack?: string; context?: Record<string, unknown> }) =>
-    post({ level: "error", message, stack: opts?.stack, context: opts?.context }),
+  error: (message: string, opts?: { stack?: string; context?: Record<string, unknown>; requestId?: string }) =>
+    post({ level: "error", message, stack: opts?.stack, context: opts?.context, requestId: opts?.requestId }),
 };
 
 // Record a user action at [info]. Prefixed so action rows are easy to filter.

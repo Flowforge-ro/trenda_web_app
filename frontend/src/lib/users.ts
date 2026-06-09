@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { API_BASE } from "./api";
+import { apiFetch } from "./http";
 import { logAction } from "./logger";
 
 export interface OrgUser {
@@ -11,7 +11,7 @@ export interface OrgUser {
 }
 
 async function fetchUsers(): Promise<OrgUser[]> {
-  const res = await fetch(`${API_BASE}/users`, { credentials: "include" });
+  const res = await apiFetch("/users");
   if (!res.ok) throw new Error("Nu s-au putut încărca utilizatorii");
   return res.json();
 }
@@ -28,9 +28,8 @@ export interface CreateUserPayload {
 }
 
 async function createUser(payload: CreateUserPayload) {
-  const res = await fetch(`${API_BASE}/users`, {
+  const res = await apiFetch("/users", {
     method: "POST",
-    credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });

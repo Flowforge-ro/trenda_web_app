@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { API_BASE } from "./api";
+import { apiFetch } from "./http";
 import { logAction } from "./logger";
 
 export interface Organization {
@@ -11,7 +11,7 @@ export interface Organization {
 }
 
 async function fetchOrganizations(): Promise<Organization[]> {
-  const res = await fetch(`${API_BASE}/organizations`, { credentials: "include" });
+  const res = await apiFetch("/organizations");
   if (!res.ok) throw new Error("Nu s-au putut încărca organizațiile");
   return res.json();
 }
@@ -26,9 +26,8 @@ export interface CreateOrgPayload {
 }
 
 async function createOrganization(payload: CreateOrgPayload) {
-  const res = await fetch(`${API_BASE}/organizations`, {
+  const res = await apiFetch("/organizations", {
     method: "POST",
-    credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
