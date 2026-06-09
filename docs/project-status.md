@@ -16,6 +16,26 @@ These come back in the supplier's **reply**, which is **unstructured** — writt
 human, in prose, possibly with the real data in an attached **PDF** or a **JPG photo**
 of a document. So extraction, not parsing, is the hard part.
 
+## Auth + organizations rework (branch `feat/password-auth-orgs`, 2026-06-09)
+
+The login/identity model was rebuilt. Auth is now **email + password** (argon2id;
+`lib/password.ts`) over the existing secure-session cookie — Microsoft OAuth is no
+longer a login, only a way to **connect a mailbox**. New data model: **Organization**
+owns **Users** (roles `superadmin` | `admin` | `member`; `orgId` nullable for the
+cross-org superadmin) and **Mailboxes** (org-owned, typed `vendor_facing` |
+`client_facing`, each storing its own encrypted refresh token + `lastPolledAt`). A
+**superadmin** creates organizations and their first admin (`/organizations`); an
+**admin** manages users (`/users`) and connects/disconnects mailboxes (`/mailboxes`).
+Orders are **org-scoped** (every member sees all org orders) and each order is sent
+from an admin-chosen **vendor mailbox**; poll/extract/status and reply-review resolve
+the Graph token from the order's mailbox, and the poll cursor lives on
+`Mailbox.lastPolledAt`. A `prisma/seed.ts` bootstraps the superadmin from
+`SEED_SUPERADMIN_EMAIL`/`SEED_SUPERADMIN_PASSWORD`. The previously deferred migration
+is resolved by a fresh baseline (`migrate dev --name baseline_auth_orgs`, resets the
+dev DB). Out of scope this iteration: `client_facing` logic, org deletion, password
+reset, god-mode. Backend 96/96 tests green + `tsc` clean; frontend `tsc -b` clean.
+Live smoke (DB up, real Microsoft mailbox) not yet done.
+
 ## Where we are now
 
 ### ✅ Phase 1 — Send (done, working end-to-end)

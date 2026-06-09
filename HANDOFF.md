@@ -6,6 +6,20 @@ _Updated: 2026-06-01 (Phases 2 & 3 + status-request email shipped). Branch: `fea
 > is the "how to pick it up tomorrow" companion. The older `claude_handoff.md` is
 > superseded by these two — ignore it.
 
+## ⚠️ Auth/org rework in progress (branch `feat/password-auth-orgs`, 2026-06-09)
+Identity was rebuilt on a new branch. Login is now **email+password** (argon2id), not
+Microsoft OAuth (OAuth now only **connects a mailbox**). **Organizations** own **users**
+(`superadmin`/`admin`/`member`) and **typed mailboxes** (`vendor_facing`/`client_facing`),
+each mailbox holding its own encrypted refresh token + `lastPolledAt`. Orders are
+**org-scoped** and sent from an admin-chosen **vendor mailbox**; poll/extract/status +
+review resolve the token from the order's mailbox. Superadmin creates orgs+admins
+(`/organizations`); admin manages `/users` and `/mailboxes`. Bootstrap via
+`cd backend && SEED_SUPERADMIN_EMAIL=… SEED_SUPERADMIN_PASSWORD=… npm run db:seed`.
+**The deferred migration below is superseded** — run `cd backend && npx prisma migrate
+dev --name baseline_auth_orgs` (resets the dev DB) once Postgres is up, then seed.
+Backend 96/96 green + `tsc` clean; frontend `tsc -b` clean; **no live smoke yet**.
+Out of scope: client_facing logic, org deletion, password reset.
+
 ## Goal (one line)
 Automate supplier part-ordering email: send a request, then poll for the human-written
 reply and extract **order number** (`orderNumber`) + **delivery date** (`deliveryTime`)
