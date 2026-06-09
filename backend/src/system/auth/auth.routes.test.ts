@@ -31,6 +31,12 @@ test("GET /auth/microsoft still starts the OAuth redirect (used for mailbox conn
   assert.match(res.headers.location as string, /login\.microsoftonline\.com/);
 });
 
+test("an unknown route returns a 404 JSON error from the not-found handler", async () => {
+  const res = await app.inject({ method: "GET", url: "/no-such-route" });
+  assert.equal(res.statusCode, 404);
+  assert.deepEqual(res.json(), { error: "Not Found" });
+});
+
 test.after(async () => {
   await app.close();
 });

@@ -4,6 +4,7 @@ import { getAccessTokenFromRefreshToken, listMessagesSince, createAndSendMail, l
 import { extractOrderInfo, mergeMissing, type ExtractionResult, type ExtractionSource } from "../../lib/extraction.js";
 import { getMailboxAccessToken } from "../../lib/mailbox-token.js";
 import { matchReply, normalizeMessageId } from "./matching.js";
+import { logger } from "../../lib/logger.js";
 import type { Order } from "../../generated/prisma/client.js";
 
 export interface PollDeps {
@@ -63,7 +64,7 @@ async function ingestReplies(deps: PollDeps): Promise<void> {
     try {
       await pollMailbox(mailboxId, orders, deps);
     } catch (err) {
-      console.error(`Poll failed for mailbox ${mailboxId}:`, err);
+      logger.error({ err, mailboxId }, "Poll failed for mailbox");
     }
   }
 }
@@ -80,13 +81,13 @@ async function extractPending(deps: PollDeps): Promise<void> {
     try {
       accessToken = await getMailboxAccessToken(deps, order.mailboxId);
     } catch (err) {
-      console.error(`Token refresh failed for mailbox ${order.mailboxId}:`, err);
+      logger.error({ err, mailboxId: order.mailboxId }, "Token refresh failed for mailbox");
     }
     try {
       await extractForOrder(order.id, accessToken, deps);
     } catch (err) {
       // A hard failure leaves the order at "reply_received" so the next poll retries it.
-      console.error(`Extraction failed for order ${order.id}:`, err);
+      logger.error({ err, orderId: order.id }, "Extraction failed for order");
     }
   }
 }
@@ -161,7 +162,7 @@ async function requestStatusUpdates(deps: PollDeps): Promise<void> {
       await deps.prisma.order.update({ where: { id: order.id }, data: { statusRequestSentAt: now } });
     } catch (err) {
       // Leave statusRequestSentAt null so the next poll retries this order.
-      console.error(`Status request failed for order ${order.id}:`, err);
+      logger.error({ err, orderId: order.id }, "Status request failed for order");
     }
   }
 }

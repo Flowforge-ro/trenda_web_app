@@ -1,4 +1,5 @@
 import { pollReplies } from "./poll.service.js";
+import { logger } from "../../lib/logger.js";
 
 const POLL_INTERVAL_MS = 1 * 10 * 1000;
 
@@ -11,7 +12,7 @@ export function startPolling(): void {
     try {
       await pollReplies();
     } catch (err) {
-      console.error("Poll cycle error:", err);
+      logger.error({ err }, "Poll cycle error");
     } finally {
       running = false;
     }

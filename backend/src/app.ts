@@ -1,8 +1,9 @@
-import Fastify from "fastify";
+import Fastify, { type FastifyError } from "fastify";
 import cors from "@fastify/cors";
 import cookie from "@fastify/cookie";
 import secureSession from "@fastify/secure-session";
 import fastifyOauth2 from "@fastify/oauth2";
+import { logger } from "./lib/logger.js";
 import { healthRoutes } from "./system/health/health.js";
 import { authRoutes } from "./system/auth/auth.routes.js";
 import { ordersRoutes } from "./modules/orders/orders.routes.js";
@@ -12,7 +13,7 @@ import { mailboxesRoutes } from "./modules/mailboxes/mailboxes.routes.js";
 
 const isProd = process.env.NODE_ENV === "production";
 
-const app = Fastify({ logger: true });
+const app = Fastify({ loggerInstance: logger });
 
 await app.register(cors, {
   origin: [
@@ -69,5 +70,23 @@ await app.register(ordersRoutes);
 await app.register(organizationsRoutes);
 await app.register(usersRoutes);
 await app.register(mailboxesRoutes);
+
+// Global error handler: log every failure, return clean JSON. 5xx are unexpected
+// (logged at error); 4xx are client mistakes / validation (logged at warn). Never
+// leak internal error messages on a 500.
+app.setErrorHandler((error: FastifyError, request, reply) => {
+  const status = error.statusCode ?? 500;
+  if (status >= 500) {
+    request.log.error({ err: error, url: request.url, method: request.method }, "Request failed");
+    return reply.status(status).send({ error: "Internal Server Error" });
+  }
+  request.log.warn({ err: error, url: request.url, method: request.method }, "Request error");
+  return reply.status(status).send({ error: error.message });
+});
+
+app.setNotFoundHandler((request, reply) => {
+  request.log.warn({ url: request.url, method: request.method }, "Route not found");
+  return reply.status(404).send({ error: "Not Found" });
+});
 
 export { app };
