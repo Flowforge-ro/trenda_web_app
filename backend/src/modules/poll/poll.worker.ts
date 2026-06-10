@@ -12,7 +12,7 @@ let running = false;
 
 export function startPolling(): void {
   setInterval(async () => {
-    if (running) return; // skip overlapping cycles
+    if (running) return;
     running = true;
     try {
       await pollReplies();

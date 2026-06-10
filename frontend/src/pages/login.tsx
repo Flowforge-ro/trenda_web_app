@@ -20,7 +20,7 @@ export function LoginPage() {
     <div className="flex min-h-screen flex-col items-center justify-center bg-background px-4">
       <div className="w-full max-w-sm rounded-2xl border bg-card p-8 shadow-sm">
         <div className="mb-8 text-center">
-          <h1 className="text-3xl font-bold">Trenda</h1>
+          <h1 className="text-3xl font-bold">Trendo</h1>
           <p className="mt-2 text-sm text-muted-foreground">Autentificare</p>
         </div>
         <form onSubmit={handleSubmit} className="space-y-4">

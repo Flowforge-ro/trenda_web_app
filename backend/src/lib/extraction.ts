@@ -1,6 +1,6 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
-const MODEL = "gemini-3.5-flash";
+const MODEL = "gemini-2.5-flash";
 
 export type ExtractionSource =
   | { kind: "text"; body: string }
