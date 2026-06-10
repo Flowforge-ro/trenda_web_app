@@ -92,7 +92,7 @@ npx prisma db seed       # creates the superadmin from SEED_SUPERADMIN_*
 From the repo root:
 
 ```bash
-npm run dev   # backend (tsx watch) + frontend (vite) via concurrently
+npm run dev   # backend (tsx watch) + frontend (vite) via concurrently (npm install -g concurrenctly)
 ```
 
 Open **http://localhost:5173** and log in with the seeded superadmin credentials.
