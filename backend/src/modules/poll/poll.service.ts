@@ -140,6 +140,10 @@ async function extractForOrder(order: PendingOrder, accessToken: string | null, 
     status: "needs_review",
   });
 
+  // A changed delivery date re-arms the one-time "Status?" nudge.
+  const dateChanged =
+    (result.deliveryEarliest?.getTime() ?? null) !== (order.deliveryEarliest?.getTime() ?? null);
+
   await deps.prisma.order.update({
     where: { id: order.id },
     data: {
@@ -148,6 +152,7 @@ async function extractForOrder(order: PendingOrder, accessToken: string | null, 
       deliveryEarliest: result.deliveryEarliest,
       deliveryLatest: result.deliveryLatest,
       replyStatus: result.status,
+      ...(dateChanged ? { statusRequestSentAt: null } : {}),
     },
   });
 }

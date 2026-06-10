@@ -130,8 +130,8 @@ The entire Phase-1 E2E 401 saga was an **account/tenant problem, not code**:
 - ~~Re-ingest supplier **correction** replies~~ — done 2026-06-10: ingest matches orders in
   any `replyStatus` (not just `awaiting_reply`); a new reply flips back to `reply_received`
   and re-extraction merges with existing fields so a correction that omits e.g. the order
-  number doesn't null it out. Known gap: a corrected (later) delivery date does NOT re-arm
-  the one-time "Status?" nudge (`statusRequestSentAt` stays set).
+  number doesn't null it out. A changed `deliveryEarliest` re-arms the "Status?" nudge
+  (`statusRequestSentAt` reset to null); an unchanged date keeps it spent.
 - Fallback reply matching (sender + `serieSasiu`) if header threading proves unreliable
   — **deliberately deferred** (user: "without the fallback for now", 2026-06-10).
 

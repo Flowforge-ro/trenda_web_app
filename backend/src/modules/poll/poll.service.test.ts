@@ -194,6 +194,42 @@ test("re-extraction keeps existing order fields the correction reply omits", asy
   assert.equal(update.replyStatus, "extracted");
 });
 
+test("re-extraction re-arms the status nudge when the delivery date changes", async () => {
+  const D25 = new Date("2026-06-25T00:00:00.000Z");
+  const corrected = {
+    ...PENDING,
+    orderNumber: "CMD42",
+    deliveryEarliest: new Date("2026-06-20T00:00:00.000Z"),
+    deliveryLatest: new Date("2026-06-20T00:00:00.000Z"),
+    statusRequestSentAt: new Date("2026-06-01T09:00:00Z"),
+  };
+  const state: State = { orders: [corrected], replies: [{ orderId: "O2", graphMessageId: "M3", body: "Livrare amânată: 25 iunie" }], replyUpdates: [], mailboxUpdates: [] };
+  await pollReplies(makeDeps(state, [], {
+    extractOrderInfo: async () => ({ orderNumber: "CMD42", deliveryTime: "25 iunie", deliveryEarliest: D25, deliveryLatest: D25, status: "extracted" as const }),
+  }));
+  const update = state.replyUpdates.find((u) => u.id === "O2");
+  assert.ok(update);
+  assert.equal(update.statusRequestSentAt, null);
+});
+
+test("re-extraction keeps the status nudge spent when the delivery date is unchanged", async () => {
+  const D20 = new Date("2026-06-20T00:00:00.000Z");
+  const corrected = {
+    ...PENDING,
+    orderNumber: "CMD42",
+    deliveryEarliest: D20,
+    deliveryLatest: D20,
+    statusRequestSentAt: new Date("2026-06-01T09:00:00Z"),
+  };
+  const state: State = { orders: [corrected], replies: [{ orderId: "O2", graphMessageId: "M3", body: "Confirmăm 20 iunie" }], replyUpdates: [], mailboxUpdates: [] };
+  await pollReplies(makeDeps(state, [], {
+    extractOrderInfo: async () => ({ orderNumber: "CMD42", deliveryTime: "20 iunie", deliveryEarliest: new Date(D20), deliveryLatest: new Date(D20), status: "extracted" as const }),
+  }));
+  const update = state.replyUpdates.find((u) => u.id === "O2");
+  assert.ok(update);
+  assert.equal(update.statusRequestSentAt, undefined);
+});
+
 test("extract phase tries PDFs before images", async () => {
   const mimes: string[] = [];
   const state: State = { orders: [NEEDS_VISION], replies: [{ orderId: "O4", graphMessageId: "M4", body: "body-text", hasAttachments: true }], replyUpdates: [], mailboxUpdates: [] };
