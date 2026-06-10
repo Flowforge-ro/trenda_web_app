@@ -161,6 +161,39 @@ test("extract phase fills missing fields from an attachment and reaches extracte
   assert.equal(update.replyStatus, "extracted");
 });
 
+test("pollReplies re-ingests a correction reply for an order past awaiting_reply", async () => {
+  const extracted = { ...ORDER, replyStatus: "extracted" };
+  const state: State = { orders: [extracted], replies: [], replyUpdates: [], mailboxUpdates: [] };
+  const m = matchingMessage();
+  m.id = "MSG_CORRECTION";
+  m.internetMessageId = "<correction@x>";
+  await pollReplies(makeDeps(state, [m]));
+  assert.equal(state.replies.length, 1);
+  assert.equal(state.replies[0].orderId, "O1");
+  assert.ok(state.replyUpdates.some((u) => u.id === "O1" && u.replyStatus === "reply_received"));
+});
+
+test("re-extraction keeps existing order fields the correction reply omits", async () => {
+  const D25 = new Date("2026-06-25T00:00:00.000Z");
+  const corrected = {
+    ...PENDING,
+    orderNumber: "CMD42",
+    deliveryTime: "20 iunie",
+    deliveryEarliest: new Date("2026-06-20T00:00:00.000Z"),
+    deliveryLatest: new Date("2026-06-20T00:00:00.000Z"),
+  };
+  const state: State = { orders: [corrected], replies: [{ orderId: "O2", graphMessageId: "M3", body: "Livrare amânată: 25 iunie" }], replyUpdates: [], mailboxUpdates: [] };
+  await pollReplies(makeDeps(state, [], {
+    extractOrderInfo: async () => ({ orderNumber: null, deliveryTime: "25 iunie", deliveryEarliest: D25, deliveryLatest: D25, status: "needs_review" as const }),
+  }));
+  const update = state.replyUpdates.find((u) => u.id === "O2");
+  assert.ok(update);
+  assert.equal(update.orderNumber, "CMD42");
+  assert.equal(update.deliveryTime, "25 iunie");
+  assert.deepEqual(update.deliveryEarliest, D25);
+  assert.equal(update.replyStatus, "extracted");
+});
+
 test("extract phase tries PDFs before images", async () => {
   const mimes: string[] = [];
   const state: State = { orders: [NEEDS_VISION], replies: [{ orderId: "O4", graphMessageId: "M4", body: "body-text", hasAttachments: true }], replyUpdates: [], mailboxUpdates: [] };

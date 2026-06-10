@@ -38,7 +38,7 @@ function daysUntil(date: Date, now: Date): number {
   return Math.round((startOfDay(date) - startOfDay(now)) / 86_400_000);
 }
 
-type AwaitingOrder = Pick<Order, "id" | "mailboxId" | "internetMessageId" | "createdAt">;
+type MatchableOrder = Pick<Order, "id" | "mailboxId" | "internetMessageId" | "createdAt">;
 
 export async function pollReplies(deps: PollDeps = defaultDeps): Promise<void> {
   await ingestReplies(deps);
@@ -47,14 +47,16 @@ export async function pollReplies(deps: PollDeps = defaultDeps): Promise<void> {
 }
 
 async function ingestReplies(deps: PollDeps): Promise<void> {
-  const awaiting = (await deps.prisma.order.findMany({
-    where: { emailStatus: "trimis", replyStatus: "awaiting_reply", internetMessageId: { not: null } },
+  // No replyStatus filter: a supplier may send a correction after the first
+  // reply was already ingested/extracted, and it must re-enter the pipeline.
+  const matchable = (await deps.prisma.order.findMany({
+    where: { emailStatus: "trimis", internetMessageId: { not: null } },
     select: { id: true, mailboxId: true, internetMessageId: true, createdAt: true },
-  })) as AwaitingOrder[];
-  if (awaiting.length === 0) return;
+  })) as MatchableOrder[];
+  if (matchable.length === 0) return;
 
-  const byMailbox = new Map<string, AwaitingOrder[]>();
-  for (const order of awaiting) {
+  const byMailbox = new Map<string, MatchableOrder[]>();
+  for (const order of matchable) {
     const list = byMailbox.get(order.mailboxId) ?? [];
     list.push(order);
     byMailbox.set(order.mailboxId, list);
@@ -69,11 +71,13 @@ async function ingestReplies(deps: PollDeps): Promise<void> {
   }
 }
 
+type PendingOrder = Pick<Order, "id" | "mailboxId" | "orderNumber" | "deliveryTime" | "deliveryEarliest" | "deliveryLatest">;
+
 async function extractPending(deps: PollDeps): Promise<void> {
   const pending = (await deps.prisma.order.findMany({
     where: { replyStatus: "reply_received" },
-    select: { id: true, mailboxId: true },
-  })) as Pick<Order, "id" | "mailboxId">[];
+    select: { id: true, mailboxId: true, orderNumber: true, deliveryTime: true, deliveryEarliest: true, deliveryLatest: true },
+  })) as PendingOrder[];
   if (pending.length === 0) return;
 
   for (const order of pending) {
@@ -84,7 +88,7 @@ async function extractPending(deps: PollDeps): Promise<void> {
       logError("Token refresh failed for mailbox", err, { mailboxId: order.mailboxId });
     }
     try {
-      await extractForOrder(order.id, accessToken, deps);
+      await extractForOrder(order, accessToken, deps);
     } catch (err) {
       // A hard failure leaves the order at "reply_received" so the next poll retries it.
       logError("Extraction failed for order", err, { orderId: order.id });
@@ -102,9 +106,9 @@ function supportedMime(att: { name: string; contentType: string | null }): strin
   return null;
 }
 
-async function extractForOrder(orderId: string, accessToken: string | null, deps: PollDeps): Promise<void> {
+async function extractForOrder(order: PendingOrder, accessToken: string | null, deps: PollDeps): Promise<void> {
   const reply = await deps.prisma.orderReply.findFirst({
-    where: { orderId },
+    where: { orderId: order.id },
     orderBy: { receivedDateTime: "desc" },
     select: { body: true, graphMessageId: true, hasAttachments: true },
   });
@@ -126,8 +130,18 @@ async function extractForOrder(orderId: string, accessToken: string | null, deps
     }
   }
 
+  // A correction reply may restate only the changed field (e.g. a new delivery
+  // date); keep previously extracted values for anything it omits.
+  result = mergeMissing(result, {
+    orderNumber: order.orderNumber,
+    deliveryTime: order.deliveryTime,
+    deliveryEarliest: order.deliveryEarliest,
+    deliveryLatest: order.deliveryLatest,
+    status: "needs_review",
+  });
+
   await deps.prisma.order.update({
-    where: { id: orderId },
+    where: { id: order.id },
     data: {
       orderNumber: result.orderNumber,
       deliveryTime: result.deliveryTime,
@@ -167,7 +181,7 @@ async function requestStatusUpdates(deps: PollDeps): Promise<void> {
   }
 }
 
-async function pollMailbox(mailboxId: string, orders: AwaitingOrder[], deps: PollDeps): Promise<void> {
+async function pollMailbox(mailboxId: string, orders: MatchableOrder[], deps: PollDeps): Promise<void> {
   const accessToken = await getMailboxAccessToken(deps, mailboxId);
   if (!accessToken) return;
 
@@ -182,7 +196,7 @@ async function pollMailbox(mailboxId: string, orders: AwaitingOrder[], deps: Pol
 
   const messages = await deps.listMessagesSince(accessToken, sinceIso);
 
-  const byMessageId = new Map<string, AwaitingOrder>();
+  const byMessageId = new Map<string, MatchableOrder>();
   for (const order of orders) {
     if (order.internetMessageId) byMessageId.set(normalizeMessageId(order.internetMessageId), order);
   }

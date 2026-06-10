@@ -124,10 +124,16 @@ The entire Phase-1 E2E 401 saga was an **account/tenant problem, not code**:
    confirm that model id is valid for the key; swap if not). The poll interval in
    `poll.worker.ts` may currently be set to a long dev value — check before relying on it.
 
-## Next steps (candidates, not started)
-- Manual-correction UI for `needs_review` orders (no write endpoint yet).
-- Re-ingest supplier **correction** replies (an order past `awaiting_reply` isn't re-matched).
-- Fallback reply matching (sender + `serieSasiu`) if header threading proves unreliable.
+## Next steps (candidates)
+- ~~Manual-correction UI for `needs_review` orders~~ — done (`PATCH /orders/:id/review` +
+  `order-review-dialog.tsx`).
+- ~~Re-ingest supplier **correction** replies~~ — done 2026-06-10: ingest matches orders in
+  any `replyStatus` (not just `awaiting_reply`); a new reply flips back to `reply_received`
+  and re-extraction merges with existing fields so a correction that omits e.g. the order
+  number doesn't null it out. Known gap: a corrected (later) delivery date does NOT re-arm
+  the one-time "Status?" nudge (`statusRequestSentAt` stays set).
+- Fallback reply matching (sender + `serieSasiu`) if header threading proves unreliable
+  — **deliberately deferred** (user: "without the fallback for now", 2026-06-10).
 
 ## Quick reference
 - Run app: `npm run dev` (root) → backend + frontend; UI at **`http://localhost:5173`**
