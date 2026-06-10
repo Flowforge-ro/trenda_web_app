@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { API_BASE } from "./api";
 import { apiFetch } from "./http";
 import { logAction } from "./logger";
@@ -41,14 +41,28 @@ async function createOrder(payload: NewOrderPayload): Promise<CreateOrderResult>
   return res.json();
 }
 
-async function fetchOrders(): Promise<Order[]> {
-  const res = await apiFetch("/orders");
+const ORDERS_PAGE_SIZE = 50;
+
+interface OrdersPage {
+  orders: Order[];
+  nextCursor: string | null;
+}
+
+async function fetchOrders(cursor?: string): Promise<OrdersPage> {
+  const params = new URLSearchParams({ limit: String(ORDERS_PAGE_SIZE) });
+  if (cursor) params.set("cursor", cursor);
+  const res = await apiFetch(`/orders?${params}`);
   if (!res.ok) throw new Error("Nu s-au putut încărca comenzile");
   return res.json();
 }
 
 export function useOrders() {
-  return useQuery({ queryKey: ["orders"], queryFn: fetchOrders });
+  return useInfiniteQuery({
+    queryKey: ["orders"],
+    queryFn: ({ pageParam }) => fetchOrders(pageParam),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
+  });
 }
 
 async function resendOrder(id: string): Promise<CreateOrderResult> {

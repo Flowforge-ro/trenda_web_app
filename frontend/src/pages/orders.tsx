@@ -104,7 +104,8 @@ function CloseOrderButton({ order }: { order: Order }) {
 const columns = ["Numar comanda", "Piesa", "Serie sasiu", "Status", "Timp livrare", ""];
 
 export function OrdersPage() {
-  const { data: orders = [], isLoading } = useOrders();
+  const { data, isLoading, hasNextPage, fetchNextPage, isFetchingNextPage } = useOrders();
+  const orders = data?.pages.flatMap((p) => p.orders) ?? [];
 
   return (
     <div className="p-8">
@@ -165,6 +166,19 @@ export function OrdersPage() {
           </TableBody>
         </Table>
       </div>
+
+      {hasNextPage && (
+        <div className="mt-4 flex justify-center">
+          <Button
+            type="button"
+            variant="outline"
+            disabled={isFetchingNextPage}
+            onClick={() => fetchNextPage()}
+          >
+            {isFetchingNextPage ? "Se încarcă..." : "Încarcă mai multe"}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

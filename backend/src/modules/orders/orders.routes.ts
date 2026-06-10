@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from "fastify";
 import { loadSessionUser, type SessionUser } from "../../lib/auth-context.js";
-import { closeOrder, createOrder, listOrders, resendOrderEmail, orderInputSchema } from "./orders.service.js";
+import { closeOrder, createOrder, listOrders, resendOrderEmail, orderInputSchema, listOrdersQuerySchema } from "./orders.service.js";
 import { getOrderReview, getReviewAttachment, saveOrderReview, reviewSaveSchema } from "./review.service.js";
 
 export function contentDisposition(name: string): string {
@@ -36,7 +36,11 @@ export const ordersRoutes: FastifyPluginAsync = async (app) => {
   app.get("/orders", async (request, reply) => {
     const user = await requireMember(request, reply);
     if (!user) return reply;
-    return listOrders(user.orgId!);
+    const parsed = listOrdersQuerySchema.safeParse(request.query);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Invalid query", details: parsed.error.flatten() });
+    }
+    return listOrders(user.orgId!, parsed.data);
   });
 
   app.post("/orders/:id/resend", async (request, reply) => {
