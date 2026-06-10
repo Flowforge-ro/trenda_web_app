@@ -34,6 +34,7 @@ function makeDeps(state: State, messages: GraphMessage[], overrides: Partial<Pol
         findMany: async ({ where }: any) =>
           state.orders.filter((o) => {
             if (where?.replyStatus && o.replyStatus !== where.replyStatus) return false;
+            if (where?.createdAt?.gte && o.createdAt < where.createdAt.gte) return false;
             if (where?.statusRequestSentAt === null && o.statusRequestSentAt != null) return false;
             if (where?.deliveryEarliest?.not === null && o.deliveryEarliest == null) return false;
             return true;
@@ -228,6 +229,14 @@ test("re-extraction keeps the status nudge spent when the delivery date is uncha
   const update = state.replyUpdates.find((u) => u.id === "O2");
   assert.ok(update);
   assert.equal(update.statusRequestSentAt, undefined);
+});
+
+test("ingest ignores orders older than the 60-day match window", async () => {
+  const stale = { ...ORDER, createdAt: new Date("2026-03-01T08:00:00Z") };
+  const state: State = { orders: [stale], replies: [], replyUpdates: [], mailboxUpdates: [] };
+  await pollReplies(makeDeps(state, [matchingMessage()]));
+  assert.equal(state.replies.length, 0);
+  assert.equal(state.replyUpdates.length, 0);
 });
 
 test("extract phase tries PDFs before images", async () => {

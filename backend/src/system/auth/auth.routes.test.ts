@@ -56,6 +56,22 @@ test("a client-supplied x-request-id is echoed back in the response", async () =
   assert.equal(res.headers["x-request-id"], "corr-123");
 });
 
+// Keep this test last: it deliberately exhausts the per-IP login rate limit,
+// which would 429 any later /auth/login request in this file.
+test("POST /auth/login is rate limited after repeated attempts", async () => {
+  let last = 0;
+  for (let i = 0; i < 11; i++) {
+    const res = await app.inject({ method: "POST", url: "/auth/login", payload: { email: "x" } });
+    last = res.statusCode;
+  }
+  assert.equal(last, 429);
+});
+
+test("other routes are not rate limited", async () => {
+  const res = await app.inject({ method: "GET", url: "/auth/me" });
+  assert.equal(res.statusCode, 401);
+});
+
 test.after(async () => {
   await app.close();
 });

@@ -32,6 +32,9 @@ const defaultDeps: PollDeps = {
 };
 
 const OVERLAP_MS = 2 * 60 * 1000;
+// Orders older than this stop being matched against incoming mail, so the
+// per-poll matching set stays bounded (no terminal order state exists yet).
+const MATCH_WINDOW_MS = 60 * 24 * 60 * 60 * 1000;
 
 function daysUntil(date: Date, now: Date): number {
   const startOfDay = (d: Date) => Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
@@ -50,7 +53,11 @@ async function ingestReplies(deps: PollDeps): Promise<void> {
   // No replyStatus filter: a supplier may send a correction after the first
   // reply was already ingested/extracted, and it must re-enter the pipeline.
   const matchable = (await deps.prisma.order.findMany({
-    where: { emailStatus: "trimis", internetMessageId: { not: null } },
+    where: {
+      emailStatus: "trimis",
+      internetMessageId: { not: null },
+      createdAt: { gte: new Date(deps.now().getTime() - MATCH_WINDOW_MS) },
+    },
     select: { id: true, mailboxId: true, internetMessageId: true, createdAt: true },
   })) as MatchableOrder[];
   if (matchable.length === 0) return;

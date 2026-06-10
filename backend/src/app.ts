@@ -5,6 +5,7 @@ import cors from "@fastify/cors";
 import cookie from "@fastify/cookie";
 import secureSession from "@fastify/secure-session";
 import fastifyOauth2 from "@fastify/oauth2";
+import rateLimit from "@fastify/rate-limit";
 import { logger } from "./lib/logger.js";
 import { writeLog } from "./lib/db-log.js";
 import { healthRoutes } from "./system/health/health.js";
@@ -40,6 +41,10 @@ await app.register(cors, {
 });
 
 await app.register(cookie);
+
+// Opt-in only: routes enable it via `config.rateLimit` (currently just login,
+// against credential brute-forcing).
+await app.register(rateLimit, { global: false });
 
 await app.register(secureSession, {
   key: Buffer.from(process.env.SESSION_SECRET!, "hex"),
