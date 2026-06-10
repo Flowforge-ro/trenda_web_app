@@ -64,6 +64,7 @@ model Order {
   deliveryEarliest    DateTime?
   deliveryLatest      DateTime?
   statusRequestSentAt DateTime?
+  closedAt            DateTime? // terminal: closed orders leave the poll/extract/nudge pipeline
   internetMessageId   String?
   emailStatus         String       @default("trimis")
   replyStatus         String       @default("awaiting_reply")

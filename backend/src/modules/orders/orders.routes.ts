@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from "fastify";
 import { loadSessionUser, type SessionUser } from "../../lib/auth-context.js";
-import { createOrder, listOrders, resendOrderEmail, orderInputSchema } from "./orders.service.js";
+import { closeOrder, createOrder, listOrders, resendOrderEmail, orderInputSchema } from "./orders.service.js";
 import { getOrderReview, getReviewAttachment, saveOrderReview, reviewSaveSchema } from "./review.service.js";
 
 export function contentDisposition(name: string): string {
@@ -46,6 +46,15 @@ export const ordersRoutes: FastifyPluginAsync = async (app) => {
     const result = await resendOrderEmail(user.orgId!, id);
     if (!result) return reply.status(404).send({ error: "Order not found" });
     return reply.status(200).send(result);
+  });
+
+  app.post("/orders/:id/close", async (request, reply) => {
+    const user = await requireMember(request, reply);
+    if (!user) return reply;
+    const { id } = request.params as { id: string };
+    const order = await closeOrder(user.orgId!, id);
+    if (!order) return reply.status(404).send({ error: "Order not found" });
+    return reply.status(200).send({ order });
   });
 
   app.get("/orders/:id/review", async (request, reply) => {

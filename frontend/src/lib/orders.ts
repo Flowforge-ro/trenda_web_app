@@ -15,6 +15,7 @@ export interface Order {
   deliveryLatest: string | null;
   replyStatus: string;
   emailStatus: string;
+  closedAt: string | null;
   createdAt: string;
 }
 
@@ -63,6 +64,23 @@ export function useResendOrder() {
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["orders"] });
       logAction("order.resend", { orderId: data.order.id, emailSent: data.emailSent });
+    },
+  });
+}
+
+async function closeOrder(id: string): Promise<{ order: Order }> {
+  const res = await apiFetch(`/orders/${id}/close`, { method: "POST" });
+  if (!res.ok) throw new Error("Închiderea comenzii a eșuat");
+  return res.json();
+}
+
+export function useCloseOrder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: closeOrder,
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["orders"] });
+      logAction("order.close", { orderId: data.order.id });
     },
   });
 }

@@ -17,6 +17,8 @@ review resolve the token from the order's mailbox. Superadmin creates orgs+admin
 `cd backend && SEED_SUPERADMIN_EMAIL=… SEED_SUPERADMIN_PASSWORD=… npm run db:seed`.
 **The deferred migration below is superseded** — run `cd backend && npx prisma migrate
 dev --name baseline_auth_orgs` (resets the dev DB) once Postgres is up, then seed.
+(Schema has since also gained `Log.requestId` and `Order.closedAt` — both land in
+that same baseline migration; client already regenerated.)
 Backend 96/96 green + `tsc` clean; frontend `tsc -b` clean; **no live smoke yet**.
 Out of scope: client_facing logic, org deletion, password reset.
 

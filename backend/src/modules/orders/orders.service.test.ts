@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createOrder, resendOrderEmail, listOrders, type OrderDeps } from "./orders.service.js";
+import { createOrder, resendOrderEmail, listOrders, closeOrder, type OrderDeps } from "./orders.service.js";
 
 const input = { emailFurnizor: "f@ex.ro", serieSasiu: "WVW001", piesa: "Filtru", mailboxId: "M1" };
 
@@ -64,4 +64,26 @@ test("resendOrderEmail resends from the order's mailbox", async () => {
 test("listOrders queries by org", async () => {
   const rows = await listOrders("O1", makeDeps().prisma);
   assert.equal(rows.length, 1);
+});
+
+test("closeOrder stamps closedAt on an order in the caller's org", async () => {
+  const order = await closeOrder("O1", "X1", makeDeps());
+  assert.ok(order);
+  assert.ok(order.closedAt instanceof Date);
+});
+
+test("closeOrder returns null for an order outside the caller's org", async () => {
+  assert.equal(await closeOrder("O2", "X1", makeDeps()), null);
+});
+
+test("closeOrder keeps the original closedAt when already closed", async () => {
+  const already = new Date("2026-06-01T00:00:00Z");
+  const deps = makeDeps();
+  (deps.prisma.order as any).findFirst = async () => ({ id: "X1", orgId: "O1", closedAt: already });
+  (deps.prisma.order as any).update = async () => {
+    throw new Error("must not update an already closed order");
+  };
+  const order = await closeOrder("O1", "X1", deps);
+  assert.ok(order);
+  assert.equal(order.closedAt, already);
 });

@@ -35,6 +35,7 @@ function makeDeps(state: State, messages: GraphMessage[], overrides: Partial<Pol
           state.orders.filter((o) => {
             if (where?.replyStatus && o.replyStatus !== where.replyStatus) return false;
             if (where?.createdAt?.gte && o.createdAt < where.createdAt.gte) return false;
+            if (where?.closedAt === null && o.closedAt != null) return false;
             if (where?.statusRequestSentAt === null && o.statusRequestSentAt != null) return false;
             if (where?.deliveryEarliest?.not === null && o.deliveryEarliest == null) return false;
             return true;
@@ -237,6 +238,29 @@ test("ingest ignores orders older than the 60-day match window", async () => {
   await pollReplies(makeDeps(state, [matchingMessage()]));
   assert.equal(state.replies.length, 0);
   assert.equal(state.replyUpdates.length, 0);
+});
+
+test("ingest skips closed orders", async () => {
+  const closed = { ...ORDER, closedAt: new Date("2026-06-01T09:00:00Z") };
+  const state: State = { orders: [closed], replies: [], replyUpdates: [], mailboxUpdates: [] };
+  await pollReplies(makeDeps(state, [matchingMessage()]));
+  assert.equal(state.replies.length, 0);
+});
+
+test("extract phase skips closed orders", async () => {
+  const closed = { ...PENDING, closedAt: new Date("2026-06-01T09:00:00Z") };
+  const state: State = { orders: [closed], replies: [{ orderId: "O2", graphMessageId: "M2", body: "Comanda CMD42" }], replyUpdates: [], mailboxUpdates: [] };
+  await pollReplies(makeDeps(state, [], {
+    extractOrderInfo: async () => ({ orderNumber: "CMD42", deliveryTime: null, deliveryEarliest: null, deliveryLatest: null, status: "extracted" as const }),
+  }));
+  assert.equal(state.replyUpdates.length, 0);
+});
+
+test("status phase skips closed orders", async () => {
+  let called = false;
+  const state: State = { orders: [{ ...DUE_ORDER, closedAt: new Date("2026-06-01T09:00:00Z") }], replies: [], replyUpdates: [], mailboxUpdates: [] };
+  await pollReplies(makeDeps(state, [], { createAndSendMail: async () => { called = true; return { internetMessageId: "<x>" }; } }));
+  assert.equal(called, false);
 });
 
 test("extract phase tries PDFs before images", async () => {

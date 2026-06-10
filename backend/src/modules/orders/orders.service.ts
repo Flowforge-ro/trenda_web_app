@@ -97,3 +97,11 @@ async function sendOrderEmail(
 export function listOrders(orgId: string, db: typeof prisma = prisma) {
   return db.order.findMany({ where: { orgId }, orderBy: { createdAt: "desc" } });
 }
+
+/** Terminal state: a closed order leaves the poll/extract/nudge pipeline. Idempotent. */
+export async function closeOrder(orgId: string, orderId: string, deps: OrderDeps = defaultDeps) {
+  const order = await deps.prisma.order.findFirst({ where: { id: orderId, orgId } });
+  if (!order) return null;
+  if (order.closedAt) return order;
+  return deps.prisma.order.update({ where: { id: orderId }, data: { closedAt: new Date() } });
+}
