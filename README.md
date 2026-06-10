@@ -15,7 +15,7 @@ Order-tracking app that connects Microsoft (Outlook) mailboxes, sends supplier o
 ## 1. Clone and install
 
 ```bash
-git clone <repo-url> trenda_web_app
+git clone https://github.com/Flowforge-ro/trenda_web_app.git trenda_web_app
 cd trenda_web_app
 npm install
 cd backend && npm install
