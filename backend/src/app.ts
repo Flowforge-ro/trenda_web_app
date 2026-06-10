@@ -1,15 +1,34 @@
-import Fastify from "fastify";
+import { STATUS_CODES } from "node:http";
+import { randomUUID } from "node:crypto";
+import Fastify, { type FastifyError } from "fastify";
 import cors from "@fastify/cors";
 import cookie from "@fastify/cookie";
 import secureSession from "@fastify/secure-session";
 import fastifyOauth2 from "@fastify/oauth2";
+import { logger } from "./lib/logger.js";
+import { writeLog } from "./lib/db-log.js";
 import { healthRoutes } from "./system/health/health.js";
 import { authRoutes } from "./system/auth/auth.routes.js";
 import { ordersRoutes } from "./modules/orders/orders.routes.js";
+import { organizationsRoutes } from "./modules/organizations/organizations.routes.js";
+import { usersRoutes } from "./modules/users/users.routes.js";
+import { mailboxesRoutes } from "./modules/mailboxes/mailboxes.routes.js";
+import { logsRoutes } from "./system/logs/logs.routes.js";
 
 const isProd = process.env.NODE_ENV === "production";
 
-const app = Fastify({ logger: true });
+// Honor a client-supplied `x-request-id` as the Fastify request id (else generate one)
+// so a frontend action and the backend logs for the request it triggered share an id.
+const app = Fastify({
+  loggerInstance: logger,
+  requestIdHeader: "x-request-id",
+  genReqId: () => randomUUID(),
+});
+
+// Echo the request id back so the client can see/store the resolved id.
+app.addHook("onRequest", async (request, reply) => {
+  reply.header("x-request-id", request.id);
+});
 
 await app.register(cors, {
   origin: [
@@ -63,5 +82,37 @@ await app.register(fastifyOauth2, {
 await app.register(healthRoutes);
 await app.register(authRoutes);
 await app.register(ordersRoutes);
+await app.register(organizationsRoutes);
+await app.register(usersRoutes);
+await app.register(mailboxesRoutes);
+await app.register(logsRoutes);
+
+// Global error handler: the full error is logged server-side; the client only ever
+// gets the generic status reason phrase ("Bad Request", "Internal Server Error", ...),
+// never error.message — so internal detail never leaks. 5xx log at error, 4xx at warn.
+app.setErrorHandler((error: FastifyError, request, reply) => {
+  const status = error.statusCode ?? 500;
+  const level = status >= 500 ? "error" : "warn";
+  request.log[level]({ err: error, url: request.url, method: request.method }, "Request failed");
+  // Persist unexpected (5xx) failures with their stack for later inspection.
+  if (status >= 500) {
+    void writeLog({
+      level: "error",
+      source: "backend",
+      message: error.message,
+      stack: error.stack ?? null,
+      context: { method: request.method, statusCode: status },
+      requestId: request.id,
+      url: request.url,
+      userId: request.session?.get("userId") ?? null,
+    });
+  }
+  return reply.status(status).send({ error: STATUS_CODES[status] ?? "Error" });
+});
+
+app.setNotFoundHandler((request, reply) => {
+  request.log.warn({ url: request.url, method: request.method }, "Route not found");
+  return reply.status(404).send({ error: "Not Found" });
+});
 
 export { app };

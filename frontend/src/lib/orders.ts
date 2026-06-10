@@ -1,5 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { API_BASE } from "./api";
+import { apiFetch } from "./http";
+import { logAction } from "./logger";
 
 export interface Order {
   id: string;
@@ -7,8 +9,8 @@ export interface Order {
   serieSasiu: string;
   piesa: string;
   status: string;
-  numarComanda: string | null;
-  timpLivrare: string | null;
+  orderNumber: string | null;
+  deliveryTime: string | null;
   deliveryEarliest: string | null;
   deliveryLatest: string | null;
   replyStatus: string;
@@ -20,6 +22,7 @@ export interface NewOrderPayload {
   emailFurnizor: string;
   serieSasiu: string;
   piesa: string;
+  mailboxId: string;
 }
 
 interface CreateOrderResult {
@@ -28,9 +31,8 @@ interface CreateOrderResult {
 }
 
 async function createOrder(payload: NewOrderPayload): Promise<CreateOrderResult> {
-  const res = await fetch(`${API_BASE}/orders`, {
+  const res = await apiFetch("/orders", {
     method: "POST",
-    credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
@@ -39,7 +41,7 @@ async function createOrder(payload: NewOrderPayload): Promise<CreateOrderResult>
 }
 
 async function fetchOrders(): Promise<Order[]> {
-  const res = await fetch(`${API_BASE}/orders`, { credentials: "include" });
+  const res = await apiFetch("/orders");
   if (!res.ok) throw new Error("Nu s-au putut încărca comenzile");
   return res.json();
 }
@@ -49,10 +51,7 @@ export function useOrders() {
 }
 
 async function resendOrder(id: string): Promise<CreateOrderResult> {
-  const res = await fetch(`${API_BASE}/orders/${id}/resend`, {
-    method: "POST",
-    credentials: "include",
-  });
+  const res = await apiFetch(`/orders/${id}/resend`, { method: "POST" });
   if (!res.ok) throw new Error("Retrimiterea emailului a eșuat");
   return res.json();
 }
@@ -61,7 +60,10 @@ export function useResendOrder() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: resendOrder,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["orders"] }),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["orders"] });
+      logAction("order.resend", { orderId: data.order.id, emailSent: data.emailSent });
+    },
   });
 }
 
@@ -94,7 +96,10 @@ export function useCreateOrder() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: createOrder,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["orders"] }),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["orders"] });
+      logAction("order.create", { orderId: data.order.id, emailSent: data.emailSent });
+    },
   });
 }
 
@@ -114,21 +119,21 @@ export interface OrderReview {
   };
   attachments: ReviewAttachment[];
   current: {
-    numarComanda: string | null;
-    timpLivrare: string | null;
+    orderNumber: string | null;
+    deliveryTime: string | null;
     deliveryEarliest: string | null;
     deliveryLatest: string | null;
   };
 }
 
 export interface SaveReviewPayload {
-  numarComanda?: string | null;
+  orderNumber?: string | null;
   deliveryEarliest?: string | null;
   deliveryLatest?: string | null;
 }
 
 async function fetchOrderReview(id: string): Promise<OrderReview> {
-  const res = await fetch(`${API_BASE}/orders/${id}/review`, { credentials: "include" });
+  const res = await apiFetch(`/orders/${id}/review`);
   if (!res.ok) throw new Error("Nu s-a putut încărca răspunsul");
   return res.json();
 }
@@ -147,9 +152,8 @@ export function attachmentUrl(orderId: string, attachmentId: string): string {
 }
 
 async function saveReview(args: { id: string; payload: SaveReviewPayload }): Promise<{ order: Order }> {
-  const res = await fetch(`${API_BASE}/orders/${args.id}/review`, {
+  const res = await apiFetch(`/orders/${args.id}/review`, {
     method: "PATCH",
-    credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(args.payload),
   });
@@ -164,6 +168,7 @@ export function useSaveReview() {
     onSuccess: (_data, { id }) => {
       qc.invalidateQueries({ queryKey: ["orders"] });
       qc.invalidateQueries({ queryKey: ["order-review", id] });
+      logAction("order.review.save", { orderId: id });
     },
   });
 }

@@ -6,9 +6,23 @@ _Updated: 2026-06-01 (Phases 2 & 3 + status-request email shipped). Branch: `fea
 > is the "how to pick it up tomorrow" companion. The older `claude_handoff.md` is
 > superseded by these two — ignore it.
 
+## ⚠️ Auth/org rework in progress (branch `feat/password-auth-orgs`, 2026-06-09)
+Identity was rebuilt on a new branch. Login is now **email+password** (argon2id), not
+Microsoft OAuth (OAuth now only **connects a mailbox**). **Organizations** own **users**
+(`superadmin`/`admin`/`member`) and **typed mailboxes** (`vendor_facing`/`client_facing`),
+each mailbox holding its own encrypted refresh token + `lastPolledAt`. Orders are
+**org-scoped** and sent from an admin-chosen **vendor mailbox**; poll/extract/status +
+review resolve the token from the order's mailbox. Superadmin creates orgs+admins
+(`/organizations`); admin manages `/users` and `/mailboxes`. Bootstrap via
+`cd backend && SEED_SUPERADMIN_EMAIL=… SEED_SUPERADMIN_PASSWORD=… npm run db:seed`.
+**The deferred migration below is superseded** — run `cd backend && npx prisma migrate
+dev --name baseline_auth_orgs` (resets the dev DB) once Postgres is up, then seed.
+Backend 96/96 green + `tsc` clean; frontend `tsc -b` clean; **no live smoke yet**.
+Out of scope: client_facing logic, org deletion, password reset.
+
 ## Goal (one line)
 Automate supplier part-ordering email: send a request, then poll for the human-written
-reply and extract **order number** (`numarComanda`) + **delivery date** (`timpLivrare`)
+reply and extract **order number** (`orderNumber`) + **delivery date** (`deliveryTime`)
 from unstructured text. **Phase 1 (send), Phase 2 (poll), Phase 3 (extract, body-only),
 and the 1-day-before-delivery "Status?" nudge are all implemented** and pass tests. The
 remaining gap is operational: **one Prisma migration is deferred** until the DB is up
@@ -38,7 +52,7 @@ remaining gap is operational: **one Prisma migration is deferred** until the DB 
 - **Phase 3 — extract** (`lib/extraction.ts`): **Gemini Flash** (`@google/genai`,
   `GOOGLE_LLM_API_KEY`, JSON `responseSchema`) over reply **body**, with an **attachment
   vision fallback**. Extract phase processes every `reply_received` order → writes
-  `numarComanda` + verbatim `timpLivrare` + normalized `deliveryEarliest`/`deliveryLatest`;
+  `orderNumber` + verbatim `deliveryTime` + normalized `deliveryEarliest`/`deliveryLatest`;
   status → `extracted` or `needs_review`; LLM failure stays `reply_received` (retry).
   **Logprob confidence was removed** — now trusts model null/non-null + ISO-date
   validation. Frontend shows a delivery countdown + `needs_review` badge.
@@ -110,10 +124,16 @@ The entire Phase-1 E2E 401 saga was an **account/tenant problem, not code**:
    confirm that model id is valid for the key; swap if not). The poll interval in
    `poll.worker.ts` may currently be set to a long dev value — check before relying on it.
 
-## Next steps (candidates, not started)
-- Manual-correction UI for `needs_review` orders (no write endpoint yet).
-- Re-ingest supplier **correction** replies (an order past `awaiting_reply` isn't re-matched).
-- Fallback reply matching (sender + `serieSasiu`) if header threading proves unreliable.
+## Next steps (candidates)
+- ~~Manual-correction UI for `needs_review` orders~~ — done (`PATCH /orders/:id/review` +
+  `order-review-dialog.tsx`).
+- ~~Re-ingest supplier **correction** replies~~ — done 2026-06-10: ingest matches orders in
+  any `replyStatus` (not just `awaiting_reply`); a new reply flips back to `reply_received`
+  and re-extraction merges with existing fields so a correction that omits e.g. the order
+  number doesn't null it out. A changed `deliveryEarliest` re-arms the "Status?" nudge
+  (`statusRequestSentAt` reset to null); an unchanged date keeps it spent.
+- Fallback reply matching (sender + `serieSasiu`) if header threading proves unreliable
+  — **deliberately deferred** (user: "without the fallback for now", 2026-06-10).
 
 ## Quick reference
 - Run app: `npm run dev` (root) → backend + frontend; UI at **`http://localhost:5173`**

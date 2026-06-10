@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** When body-only extraction leaves an order at `needs_review` and its reply has attachments, fetch the reply's PDF attachments, extract their text with `unpdf`, and run the same `extractOrderInfo` over that text to fill the missing `numarComanda` / delivery date.
+**Goal:** When body-only extraction leaves an order at `needs_review` and its reply has attachments, fetch the reply's PDF attachments, extract their text with `unpdf`, and run the same `extractOrderInfo` over that text to fill the missing `orderNumber` / delivery date.
 
 **Architecture:** A new `lib/pdf.ts` (`extractPdfText` via `unpdf`) and a `listPdfAttachments` Graph helper. The poll extract phase gets a Graph token per user (reusing `getUserAccessToken`) and, when the body pass isn't `extracted`, iterates the reply's PDFs filling only the missing fields via a pure `mergeMissing` helper. PDFs only; no schema change.
 
@@ -205,39 +205,39 @@ then append:
 ```ts
 const D20 = new Date("2026-06-20T00:00:00.000Z");
 
-test("mergeMissing fills numarComanda from the extra result", () => {
-  const base = { numarComanda: null, timpLivrare: null, deliveryEarliest: D20, deliveryLatest: D20, status: "needs_review" as const };
-  const extra = { numarComanda: "CMD9", timpLivrare: null, deliveryEarliest: null, deliveryLatest: null, status: "needs_review" as const };
+test("mergeMissing fills orderNumber from the extra result", () => {
+  const base = { orderNumber: null, deliveryTime: null, deliveryEarliest: D20, deliveryLatest: D20, status: "needs_review" as const };
+  const extra = { orderNumber: "CMD9", deliveryTime: null, deliveryEarliest: null, deliveryLatest: null, status: "needs_review" as const };
   const r = mergeMissing(base, extra);
-  assert.equal(r.numarComanda, "CMD9");
+  assert.equal(r.orderNumber, "CMD9");
   assert.equal(r.deliveryEarliest?.toISOString(), D20.toISOString());
   assert.equal(r.status, "extracted");
 });
 
 test("mergeMissing fills the delivery block from the extra result", () => {
-  const base = { numarComanda: "CMD9", timpLivrare: null, deliveryEarliest: null, deliveryLatest: null, status: "needs_review" as const };
-  const extra = { numarComanda: null, timpLivrare: "20 iunie", deliveryEarliest: D20, deliveryLatest: D20, status: "needs_review" as const };
+  const base = { orderNumber: "CMD9", deliveryTime: null, deliveryEarliest: null, deliveryLatest: null, status: "needs_review" as const };
+  const extra = { orderNumber: null, deliveryTime: "20 iunie", deliveryEarliest: D20, deliveryLatest: D20, status: "needs_review" as const };
   const r = mergeMissing(base, extra);
-  assert.equal(r.numarComanda, "CMD9");
-  assert.equal(r.timpLivrare, "20 iunie");
+  assert.equal(r.orderNumber, "CMD9");
+  assert.equal(r.deliveryTime, "20 iunie");
   assert.equal(r.deliveryEarliest?.toISOString(), D20.toISOString());
   assert.equal(r.status, "extracted");
 });
 
 test("mergeMissing does not overwrite values already present in base", () => {
-  const base = { numarComanda: "KEEP", timpLivrare: "keep", deliveryEarliest: D20, deliveryLatest: D20, status: "extracted" as const };
-  const extra = { numarComanda: "OTHER", timpLivrare: "other", deliveryEarliest: new Date("2026-07-01T00:00:00.000Z"), deliveryLatest: new Date("2026-07-01T00:00:00.000Z"), status: "extracted" as const };
+  const base = { orderNumber: "KEEP", deliveryTime: "keep", deliveryEarliest: D20, deliveryLatest: D20, status: "extracted" as const };
+  const extra = { orderNumber: "OTHER", deliveryTime: "other", deliveryEarliest: new Date("2026-07-01T00:00:00.000Z"), deliveryLatest: new Date("2026-07-01T00:00:00.000Z"), status: "extracted" as const };
   const r = mergeMissing(base, extra);
-  assert.equal(r.numarComanda, "KEEP");
-  assert.equal(r.timpLivrare, "keep");
+  assert.equal(r.orderNumber, "KEEP");
+  assert.equal(r.deliveryTime, "keep");
   assert.equal(r.deliveryEarliest?.toISOString(), D20.toISOString());
 });
 
 test("mergeMissing leaves base unchanged when extra is all null", () => {
-  const base = { numarComanda: "CMD9", timpLivrare: null, deliveryEarliest: null, deliveryLatest: null, status: "needs_review" as const };
-  const extra = { numarComanda: null, timpLivrare: null, deliveryEarliest: null, deliveryLatest: null, status: "needs_review" as const };
+  const base = { orderNumber: "CMD9", deliveryTime: null, deliveryEarliest: null, deliveryLatest: null, status: "needs_review" as const };
+  const extra = { orderNumber: null, deliveryTime: null, deliveryEarliest: null, deliveryLatest: null, status: "needs_review" as const };
   const r = mergeMissing(base, extra);
-  assert.equal(r.numarComanda, "CMD9");
+  assert.equal(r.orderNumber, "CMD9");
   assert.equal(r.deliveryEarliest, null);
   assert.equal(r.status, "needs_review");
 });
@@ -255,22 +255,22 @@ Add this exported function at the end of the file (after `extractOrderInfo`):
 ```ts
 /**
  * Combine a base extraction with an extra one, filling ONLY fields still missing in base.
- * Delivery is all-or-nothing (timpLivrare + both dates move together). Recomputes status.
+ * Delivery is all-or-nothing (deliveryTime + both dates move together). Recomputes status.
  */
 export function mergeMissing(
   base: ExtractionResult,
   extra: ExtractionResult
 ): ExtractionResult {
-  const numarComanda = base.numarComanda ?? extra.numarComanda;
-  let { timpLivrare, deliveryEarliest, deliveryLatest } = base;
+  const orderNumber = base.orderNumber ?? extra.orderNumber;
+  let { deliveryTime, deliveryEarliest, deliveryLatest } = base;
   if (deliveryEarliest === null && extra.deliveryEarliest !== null) {
-    timpLivrare = extra.timpLivrare;
+    deliveryTime = extra.deliveryTime;
     deliveryEarliest = extra.deliveryEarliest;
     deliveryLatest = extra.deliveryLatest;
   }
   const status: ExtractionResult["status"] =
-    numarComanda && deliveryEarliest ? "extracted" : "needs_review";
-  return { numarComanda, timpLivrare, deliveryEarliest, deliveryLatest, status };
+    orderNumber && deliveryEarliest ? "extracted" : "needs_review";
+  return { orderNumber, deliveryTime, deliveryEarliest, deliveryLatest, status };
 }
 ```
 
@@ -322,8 +322,8 @@ const D20 = new Date("2026-06-20T00:00:00.000Z");
 // extractOrderInfo fake: body text gives the order number only; pdf text gives delivery only.
 const splitExtractor = async (text: string) =>
   text === "pdf-text"
-    ? { numarComanda: null, timpLivrare: "20 iunie", deliveryEarliest: D20, deliveryLatest: D20, status: "needs_review" as const }
-    : { numarComanda: "CMD9", timpLivrare: null, deliveryEarliest: null, deliveryLatest: null, status: "needs_review" as const };
+    ? { orderNumber: null, deliveryTime: "20 iunie", deliveryEarliest: D20, deliveryLatest: D20, status: "needs_review" as const }
+    : { orderNumber: "CMD9", deliveryTime: null, deliveryEarliest: null, deliveryLatest: null, status: "needs_review" as const };
 
 test("extract phase fills missing fields from a PDF and reaches extracted", async () => {
   let attCalled = false;
@@ -347,7 +347,7 @@ test("extract phase fills missing fields from a PDF and reaches extracted", asyn
   assert.equal(attCalled, true);
   const update = state.replyUpdates.find((u) => u.id === "O4");
   assert.ok(update);
-  assert.equal(update.numarComanda, "CMD9");
+  assert.equal(update.orderNumber, "CMD9");
   assert.equal(update.deliveryEarliest?.toISOString(), D20.toISOString());
   assert.equal(update.replyStatus, "extracted");
 });
@@ -363,8 +363,8 @@ test("extract phase does not fetch PDFs when the body already extracted", async 
   await pollReplies(
     makeDeps(state, [], {
       extractOrderInfo: async () => ({
-        numarComanda: "CMD9",
-        timpLivrare: "20 iunie",
+        orderNumber: "CMD9",
+        deliveryTime: "20 iunie",
         deliveryEarliest: D20,
         deliveryLatest: D20,
         status: "extracted" as const,
@@ -519,8 +519,8 @@ async function extractForOrder(
   let result: ExtractionResult = reply?.body
     ? await deps.extractOrderInfo(reply.body, today)
     : {
-        numarComanda: null,
-        timpLivrare: null,
+        orderNumber: null,
+        deliveryTime: null,
         deliveryEarliest: null,
         deliveryLatest: null,
         status: "needs_review",
@@ -544,8 +544,8 @@ async function extractForOrder(
   await deps.prisma.order.update({
     where: { id: orderId },
     data: {
-      numarComanda: result.numarComanda,
-      timpLivrare: result.timpLivrare,
+      orderNumber: result.orderNumber,
+      deliveryTime: result.deliveryTime,
       deliveryEarliest: result.deliveryEarliest,
       deliveryLatest: result.deliveryLatest,
       replyStatus: result.status,

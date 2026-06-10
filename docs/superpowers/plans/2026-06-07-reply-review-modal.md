@@ -219,8 +219,8 @@ const reply = {
 const orderRow = {
   id: "O1",
   userId: "U1",
-  numarComanda: null,
-  timpLivrare: null,
+  orderNumber: null,
+  deliveryTime: null,
   deliveryEarliest: null,
   deliveryLatest: null,
   replies: [reply],
@@ -258,7 +258,7 @@ test("getOrderReview returns reply, attachment meta, and current fields", async 
   assert.deepEqual(result!.attachments, [
     { id: "A1", name: "po.pdf", contentType: "application/pdf", size: 10 },
   ]);
-  assert.equal(result!.current.numarComanda, null);
+  assert.equal(result!.current.orderNumber, null);
 });
 
 test("getOrderReview returns null for an order owned by another user", async () => {
@@ -360,8 +360,8 @@ export interface OrderReviewResult {
   };
   attachments: AttachmentMeta[];
   current: {
-    numarComanda: string | null;
-    timpLivrare: string | null;
+    orderNumber: string | null;
+    deliveryTime: string | null;
     deliveryEarliest: Date | null;
     deliveryLatest: Date | null;
   };
@@ -394,8 +394,8 @@ export async function getOrderReview(
     },
     attachments,
     current: {
-      numarComanda: order.numarComanda,
-      timpLivrare: order.timpLivrare,
+      orderNumber: order.orderNumber,
+      deliveryTime: order.deliveryTime,
       deliveryEarliest: order.deliveryEarliest,
       deliveryLatest: order.deliveryLatest,
     },
@@ -528,7 +528,7 @@ test("reviewSaveSchema rejects a non-date string", () => {
 });
 
 test("reviewSaveSchema accepts order number with no dates", () => {
-  const r = reviewSaveSchema.safeParse({ numarComanda: "C-123" });
+  const r = reviewSaveSchema.safeParse({ orderNumber: "C-123" });
   assert.equal(r.success, true);
 });
 
@@ -543,12 +543,12 @@ test("saveOrderReview sets fields, mirrors a single date, and clears needs_revie
   const result = await saveOrderReview(
     "U1",
     "O1",
-    { numarComanda: "C-123", deliveryEarliest: "2026-06-10" },
+    { orderNumber: "C-123", deliveryEarliest: "2026-06-10" },
     deps
   );
 
   assert.ok(result);
-  assert.equal(updateData.numarComanda, "C-123");
+  assert.equal(updateData.orderNumber, "C-123");
   assert.equal(updateData.replyStatus, "extracted");
   assert.deepEqual(updateData.deliveryEarliest, new Date("2026-06-10"));
   assert.deepEqual(updateData.deliveryLatest, new Date("2026-06-10"));
@@ -558,7 +558,7 @@ test("saveOrderReview returns null for a non-owner", async () => {
   const deps = makeDeps();
   deps.prisma.order.findFirst = (async ({ where }: any) =>
     where.userId === "U1" ? { id: "O1", userId: "U1" } : null) as any;
-  const result = await saveOrderReview("U2", "O1", { numarComanda: "C-1" }, deps);
+  const result = await saveOrderReview("U2", "O1", { orderNumber: "C-1" }, deps);
   assert.equal(result, null);
 });
 ```
@@ -577,7 +577,7 @@ const dateStr = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "expected YYYY-MM-DD");
 
 export const reviewSaveSchema = z
   .object({
-    numarComanda: z.string().trim().min(1).nullish(),
+    orderNumber: z.string().trim().min(1).nullish(),
     deliveryEarliest: dateStr.nullish(),
     deliveryLatest: dateStr.nullish(),
   })
@@ -605,7 +605,7 @@ export async function saveOrderReview(
   return deps.prisma.order.update({
     where: { id: orderId },
     data: {
-      numarComanda: input.numarComanda ?? undefined,
+      orderNumber: input.orderNumber ?? undefined,
       deliveryEarliest: earliest ? new Date(earliest) : undefined,
       deliveryLatest: latest ? new Date(latest) : undefined,
       replyStatus: "extracted",
@@ -653,7 +653,7 @@ test("PATCH /orders/:id/review without a session returns 401", async () => {
   const res = await app.inject({
     method: "PATCH",
     url: "/orders/O1/review",
-    payload: { numarComanda: "C-1" },
+    payload: { orderNumber: "C-1" },
   });
   assert.equal(res.statusCode, 401);
 });
@@ -755,15 +755,15 @@ export interface OrderReview {
   };
   attachments: ReviewAttachment[];
   current: {
-    numarComanda: string | null;
-    timpLivrare: string | null;
+    orderNumber: string | null;
+    deliveryTime: string | null;
     deliveryEarliest: string | null;
     deliveryLatest: string | null;
   };
 }
 
 export interface SaveReviewPayload {
-  numarComanda?: string | null;
+  orderNumber?: string | null;
   deliveryEarliest?: string | null;
   deliveryLatest?: string | null;
 }
@@ -884,13 +884,13 @@ export function OrderReviewDialog({ order }: { order: Order }) {
   const { data, isLoading, isError } = useOrderReview(order.id, open);
   const save = useSaveReview();
 
-  const [numarComanda, setNumarComanda] = useState("");
+  const [orderNumber, setorderNumber] = useState("");
   const [earliest, setEarliest] = useState("");
   const [latest, setLatest] = useState("");
 
   useEffect(() => {
     if (data) {
-      setNumarComanda(data.current.numarComanda ?? "");
+      setorderNumber(data.current.orderNumber ?? "");
       setEarliest(isoToDateInput(data.current.deliveryEarliest));
       setLatest(isoToDateInput(data.current.deliveryLatest));
     }
@@ -901,7 +901,7 @@ export function OrderReviewDialog({ order }: { order: Order }) {
       {
         id: order.id,
         payload: {
-          numarComanda: numarComanda.trim() || null,
+          orderNumber: orderNumber.trim() || null,
           deliveryEarliest: earliest || null,
           deliveryLatest: latest || null,
         },
@@ -954,11 +954,11 @@ export function OrderReviewDialog({ order }: { order: Order }) {
 
             <div className="space-y-3 border-t border-gray-200 pt-3">
               <div className="space-y-1">
-                <Label htmlFor="numarComanda">Număr comandă</Label>
+                <Label htmlFor="orderNumber">Număr comandă</Label>
                 <Input
-                  id="numarComanda"
-                  value={numarComanda}
-                  onChange={(e) => setNumarComanda(e.target.value)}
+                  id="orderNumber"
+                  value={orderNumber}
+                  onChange={(e) => setorderNumber(e.target.value)}
                 />
               </div>
               <div className="flex gap-3">

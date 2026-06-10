@@ -52,13 +52,13 @@ export function OrderReviewDialog({ order }: { order: Order }) {
   const { data, isLoading, isError } = useOrderReview(order.id, open);
   const save = useSaveReview();
 
-  const [numarComanda, setNumarComanda] = useState("");
+  const [orderNumber, setorderNumber] = useState("");
   const [earliest, setEarliest] = useState("");
   const [latest, setLatest] = useState("");
 
   useEffect(() => {
     if (data) {
-      setNumarComanda(data.current.numarComanda ?? "");
+      setorderNumber(data.current.orderNumber ?? "");
       setEarliest(isoToDateInput(data.current.deliveryEarliest));
       setLatest(isoToDateInput(data.current.deliveryLatest));
     }
@@ -68,7 +68,7 @@ export function OrderReviewDialog({ order }: { order: Order }) {
   // React Query cache) shows server values, not the previous session's input.
   useEffect(() => {
     if (!open) {
-      setNumarComanda("");
+      setorderNumber("");
       setEarliest("");
       setLatest("");
     }
@@ -79,7 +79,7 @@ export function OrderReviewDialog({ order }: { order: Order }) {
       {
         id: order.id,
         payload: {
-          numarComanda: numarComanda.trim() || null,
+          orderNumber: orderNumber.trim() || null,
           deliveryEarliest: earliest || null,
           deliveryLatest: latest || null,
         },
@@ -132,11 +132,11 @@ export function OrderReviewDialog({ order }: { order: Order }) {
 
             <div className="space-y-3 border-t border-gray-200 pt-3">
               <div className="space-y-1">
-                <Label htmlFor="numarComanda">Număr comandă</Label>
+                <Label htmlFor="orderNumber">Număr comandă</Label>
                 <Input
-                  id="numarComanda"
-                  value={numarComanda}
-                  onChange={(e) => setNumarComanda(e.target.value)}
+                  id="orderNumber"
+                  value={orderNumber}
+                  onChange={(e) => setorderNumber(e.target.value)}
                 />
               </div>
               <div className="flex gap-3">

@@ -5,6 +5,8 @@ import { useAuth } from "./lib/auth";
 import { LoginPage } from "./pages/login";
 import { OrdersPage } from "./pages/orders";
 import { PlaceholderPage } from "./pages/placeholder";
+import { SettingsPage } from "./pages/settings";
+import { AdminOrgsPage } from "./pages/admin-orgs";
 import { AppLayout } from "./components/layout/app-layout";
 
 const queryClient = new QueryClient();
@@ -14,16 +16,11 @@ function AuthGuard({ children }: { children: ReactNode }) {
 
   if (isLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center text-muted-foreground">
-        Loading...
-      </div>
+      <div className="flex min-h-screen items-center justify-center text-muted-foreground">Loading...</div>
     );
   }
-
-  if (error || !user) {
-    return <Navigate to="/login" replace />;
-  }
-
+  if (error || !user) return <Navigate to="/login" replace />;
+  if (user.role === "superadmin") return <AdminOrgsPage />;
   return <>{children}</>;
 }
 
@@ -44,7 +41,7 @@ function App() {
             <Route path="/piese" element={<PlaceholderPage title="Piese" />} />
             <Route path="/clienti" element={<PlaceholderPage title="Clienți" />} />
             <Route path="/rapoarte" element={<PlaceholderPage title="Rapoarte" />} />
-            <Route path="/setari" element={<PlaceholderPage title="Setări" />} />
+            <Route path="/setari" element={<SettingsPage />} />
           </Route>
         </Routes>
       </BrowserRouter>

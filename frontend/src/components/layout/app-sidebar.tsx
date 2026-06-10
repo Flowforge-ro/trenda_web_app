@@ -11,8 +11,9 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
 } from "lucide-react";
-import { API_BASE } from "@/lib/api";
+import { apiFetch } from "@/lib/http";
 import { useAuth } from "@/lib/auth";
+import { logAction } from "@/lib/logger";
 import { cn } from "@/lib/utils";
 
 const navItems = [
@@ -24,10 +25,8 @@ const navItems = [
 ];
 
 async function logout() {
-  await fetch(`${API_BASE}/auth/logout`, {
-    method: "POST",
-    credentials: "include",
-  });
+  logAction("logout");
+  await apiFetch("/auth/logout", { method: "POST" });
   window.location.href = "/login";
 }
 

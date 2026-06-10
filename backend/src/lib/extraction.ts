@@ -15,16 +15,16 @@ export interface ExtractionDeps {
 }
 
 export interface ExtractionResult {
-  numarComanda: string | null;
-  timpLivrare: string | null;
+  orderNumber: string | null;
+  deliveryTime: string | null;
   deliveryEarliest: Date | null;
   deliveryLatest: Date | null;
   status: "extracted" | "needs_review";
 }
 
 interface ParsedFields {
-  numarComanda: string | null;
-  timpLivrare: string | null;
+  orderNumber: string | null;
+  deliveryTime: string | null;
   deliveryEarliest: string | null;
   deliveryLatest: string | null;
 }
@@ -33,11 +33,11 @@ function instructions(today: string): string[] {
   return [
     "Ești un asistent care extrage date dintr-un email de la un furnizor de piese auto.",
     `Data de azi este ${today}.`,
-    "Extrage numărul de comandă al furnizorului (numarComanda) și data livrării, dacă există.",
+    "Extrage numărul de comandă al furnizorului (orderNumber) și data livrării, dacă există.",
     "Pentru livrare: returnează deliveryEarliest și deliveryLatest în format ISO YYYY-MM-DD.",
     "Dacă data este precisă, deliveryEarliest și deliveryLatest sunt egale.",
     'Dacă este vagă ("săptămâna viitoare", "în câteva zile"), returnează un interval plauzibil rezolvat față de data de azi.',
-    "timpLivrare = expresia exactă despre livrare așa cum este scrisă.",
+    "deliveryTime = expresia exactă despre livrare așa cum este scrisă.",
     "Dacă o valoare lipsește cu adevărat, returnează null pentru ea. Nu inventa niciodată valori.",
   ];
 }
@@ -68,8 +68,8 @@ async function defaultGenerate(parts: ContentPart[]): Promise<string> {
       responseSchema: {
         type: Type.OBJECT,
         properties: {
-          numarComanda: { type: Type.STRING, nullable: true },
-          timpLivrare: { type: Type.STRING, nullable: true },
+          orderNumber: { type: Type.STRING, nullable: true },
+          deliveryTime: { type: Type.STRING, nullable: true },
           deliveryEarliest: { type: Type.STRING, nullable: true },
           deliveryLatest: { type: Type.STRING, nullable: true },
         },
@@ -95,9 +95,9 @@ export async function extractOrderInfo(
   const jsonText = await deps.generate(buildParts(source, today));
   const parsed = JSON.parse(jsonText) as ParsedFields;
 
-  const numarComanda = parsed.numarComanda || null;
+  const orderNumber = parsed.orderNumber || null;
 
-  let timpLivrare: string | null = null;
+  let deliveryTime: string | null = null;
   let deliveryEarliest: Date | null = null;
   let deliveryLatest: Date | null = null;
   if (parsed.deliveryEarliest && parsed.deliveryLatest) {
@@ -106,27 +106,27 @@ export async function extractOrderInfo(
     if (earliest && latest) {
       deliveryEarliest = earliest;
       deliveryLatest = latest;
-      timpLivrare = parsed.timpLivrare;
+      deliveryTime = parsed.deliveryTime;
     }
   }
 
   const status: ExtractionResult["status"] =
-    numarComanda && deliveryEarliest ? "extracted" : "needs_review";
-  return { numarComanda, timpLivrare, deliveryEarliest, deliveryLatest, status };
+    orderNumber && deliveryEarliest ? "extracted" : "needs_review";
+  return { orderNumber, deliveryTime, deliveryEarliest, deliveryLatest, status };
 }
 
 export function mergeMissing(
   base: ExtractionResult,
   extra: ExtractionResult
 ): ExtractionResult {
-  const numarComanda = base.numarComanda ?? extra.numarComanda;
-  let { timpLivrare, deliveryEarliest, deliveryLatest } = base;
+  const orderNumber = base.orderNumber ?? extra.orderNumber;
+  let { deliveryTime, deliveryEarliest, deliveryLatest } = base;
   if (deliveryEarliest === null && extra.deliveryEarliest !== null) {
-    timpLivrare = extra.timpLivrare;
+    deliveryTime = extra.deliveryTime;
     deliveryEarliest = extra.deliveryEarliest;
     deliveryLatest = extra.deliveryLatest;
   }
   const status: ExtractionResult["status"] =
-    numarComanda && deliveryEarliest ? "extracted" : "needs_review";
-  return { numarComanda, timpLivrare, deliveryEarliest, deliveryLatest, status };
+    orderNumber && deliveryEarliest ? "extracted" : "needs_review";
+  return { orderNumber, deliveryTime, deliveryEarliest, deliveryLatest, status };
 }

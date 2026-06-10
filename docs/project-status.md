@@ -9,12 +9,32 @@ tests green; one Prisma migration deferred until the DB is up — see end of fil
 web app; the system emails the supplier a part request and then tracks the
 conversation until it can fill in the two values that matter most:
 
-1. **Order number** (`numarComanda`)
-2. **Delivery date** (`timpLivrare`)
+1. **Order number** (`orderNumber`)
+2. **Delivery date** (`deliveryTime`)
 
 These come back in the supplier's **reply**, which is **unstructured** — written by a
 human, in prose, possibly with the real data in an attached **PDF** or a **JPG photo**
 of a document. So extraction, not parsing, is the hard part.
+
+## Auth + organizations rework (branch `feat/password-auth-orgs`, 2026-06-09)
+
+The login/identity model was rebuilt. Auth is now **email + password** (argon2id;
+`lib/password.ts`) over the existing secure-session cookie — Microsoft OAuth is no
+longer a login, only a way to **connect a mailbox**. New data model: **Organization**
+owns **Users** (roles `superadmin` | `admin` | `member`; `orgId` nullable for the
+cross-org superadmin) and **Mailboxes** (org-owned, typed `vendor_facing` |
+`client_facing`, each storing its own encrypted refresh token + `lastPolledAt`). A
+**superadmin** creates organizations and their first admin (`/organizations`); an
+**admin** manages users (`/users`) and connects/disconnects mailboxes (`/mailboxes`).
+Orders are **org-scoped** (every member sees all org orders) and each order is sent
+from an admin-chosen **vendor mailbox**; poll/extract/status and reply-review resolve
+the Graph token from the order's mailbox, and the poll cursor lives on
+`Mailbox.lastPolledAt`. A `prisma/seed.ts` bootstraps the superadmin from
+`SEED_SUPERADMIN_EMAIL`/`SEED_SUPERADMIN_PASSWORD`. The previously deferred migration
+is resolved by a fresh baseline (`migrate dev --name baseline_auth_orgs`, resets the
+dev DB). Out of scope this iteration: `client_facing` logic, org deletion, password
+reset, god-mode. Backend 96/96 tests green + `tsc` clean; frontend `tsc -b` clean.
+Live smoke (DB up, real Microsoft mailbox) not yet done.
 
 ## Where we are now
 
@@ -24,7 +44,7 @@ of a document. So extraction, not parsing, is the hard part.
   message's `internetMessageId` for future reply-matching).
 - Order is kept even if the send fails (`emailStatus`: `in_curs` → `trimis` / `esuat`).
 - Failed/stuck sends show a badge + **Retrimite** (resend) button in the orders table.
-- `numarComanda` and `timpLivrare` are intentionally **null at creation** — they're
+- `orderNumber` and `deliveryTime` are intentionally **null at creation** — they're
   filled later from the reply.
 - Verified live: requires a **licensed Exchange Online member account** in the app's
   tenant (see `memory: graph-mail-needs-licensed-member`).
@@ -38,7 +58,7 @@ Key code:
 - `frontend/src/lib/orders.ts`, `frontend/src/pages/orders.tsx` — UI
 
 Data model (`backend/prisma/schema.prisma` → `Order`): `emailFurnizor`, `serieSasiu`,
-`piesa`, `status`, `numarComanda?`, `timpLivrare?`, `deliveryEarliest?`,
+`piesa`, `status`, `orderNumber?`, `deliveryTime?`, `deliveryEarliest?`,
 `deliveryLatest?`, `internetMessageId?`, `emailStatus`, `replyStatus`,
 `statusRequestSentAt?`. Plus `User.lastPolledAt?` and an `OrderReply` table (one row per
 matched supplier reply: `graphMessageId` unique, `body`, `receivedDateTime`, …).
@@ -60,7 +80,7 @@ Per cycle, per user:
 structured `responseSchema` JSON) over the **reply body text**, with an **attachment
 vision fallback** (PDF + JPEG/PNG). A second **extract phase** in the poller processes
 every `reply_received` order:
-- Writes `numarComanda`, the verbatim `timpLivrare`, and a normalized delivery range
+- Writes `orderNumber`, the verbatim `deliveryTime`, and a normalized delivery range
   `deliveryEarliest`/`deliveryLatest` (today's date is given to the model so relative
   phrases resolve; vague phrases become a range).
 - `replyStatus` → `extracted` (both values present) or `needs_review` (anything missing /

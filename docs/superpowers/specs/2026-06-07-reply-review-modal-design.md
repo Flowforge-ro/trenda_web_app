@@ -17,15 +17,15 @@ leaving the app.
 - Attachments are fetched **live from Microsoft Graph** on demand — nothing new is
   persisted, so **no schema change / migration**.
 
-Out of scope: editing `timpLivrare` free text, re-running extraction, multi-reply history
+Out of scope: editing `deliveryTime` free text, re-running extraction, multi-reply history
 (only the latest reply is shown), persisting attachment bytes.
 
 ## Data model (unchanged)
 
 - `OrderReply.body` already stores the reply text (`Prefer: outlook.body-content-type="text"`,
   so body is plain text). `graphMessageId` identifies the Graph message for attachment fetch.
-- Corrections write existing `Order` columns: `numarComanda`, `deliveryEarliest`,
-  `deliveryLatest`, `replyStatus`. `timpLivrare` is left untouched.
+- Corrections write existing `Order` columns: `orderNumber`, `deliveryEarliest`,
+  `deliveryLatest`, `replyStatus`. `deliveryTime` is left untouched.
 
 ## Backend
 
@@ -57,14 +57,14 @@ persist a rotated refresh token if one comes back.
     {
       reply: { fromEmail, subject, receivedDateTime, body },
       attachments: [{ id, name, contentType, size }],
-      current: { numarComanda, timpLivrare, deliveryEarliest, deliveryLatest }
+      current: { orderNumber, deliveryTime, deliveryEarliest, deliveryLatest }
     }
     ```
 - `getReviewAttachment(userId, orderId, attachmentId, deps)`:
   - Verify order ownership + latest reply, resolve token, `getAttachmentBytes`. Return
     `FileAttachment` or `null` (not found / not owner).
 - `saveOrderReview(userId, orderId, input, deps)`:
-  - `input = { numarComanda?: string | null, deliveryEarliest?: string | null,
+  - `input = { orderNumber?: string | null, deliveryEarliest?: string | null,
     deliveryLatest?: string | null }` (ISO date strings).
   - Validation (zod): if both dates present, `earliest <= latest`; if only one present,
     set both equal; both may be null.
@@ -98,7 +98,7 @@ All ownership-guarded (session `userId`, else 401), `404` when service returns `
 - Attachments: for each, if `contentType` is `application/pdf` → `<object>`/`<iframe>`
   at `attachmentUrl`; if `image/*` → `<img>`; else a download link. Each also has a
   "Descarcă" link.
-- Edit form: `numarComanda` text input, `deliveryEarliest` + `deliveryLatest` native
+- Edit form: `orderNumber` text input, `deliveryEarliest` + `deliveryLatest` native
   `<input type="date">`, pre-filled from `current`. Save button → `useSaveReview` →
   close + refetch. Loading + error states.
 

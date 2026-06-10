@@ -115,7 +115,7 @@ export function OrdersPage() {
               orders.map((o) => (
                 <TableRow key={o.id} className="hover:bg-gray-100">
                   <TableCell className="px-4 py-3 font-medium text-foreground">
-                    {o.numarComanda ?? "—"}
+                    {o.orderNumber ?? "—"}
                   </TableCell>
                   <TableCell className="px-4 py-3 text-foreground">{o.piesa}</TableCell>
                   <TableCell className="px-4 py-3 font-mono text-xs text-muted-foreground">
@@ -124,10 +124,10 @@ export function OrdersPage() {
                   <TableCell className="px-4 py-3">
                     <StatusCell order={o} />
                   </TableCell>
-                  <TableCell className="px-4 py-3 text-foreground" title={o.timpLivrare ?? undefined}>
+                  <TableCell className="px-4 py-3 text-foreground" title={o.deliveryTime ?? undefined}>
                     {o.deliveryEarliest && o.deliveryLatest
                       ? formatDeliveryCountdown(o.deliveryEarliest, o.deliveryLatest)
-                      : o.timpLivrare ?? "—"}
+                      : o.deliveryTime ?? "—"}
                   </TableCell>
                 </TableRow>
               ))

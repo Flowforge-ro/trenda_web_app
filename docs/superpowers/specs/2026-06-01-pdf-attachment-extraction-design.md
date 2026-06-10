@@ -11,7 +11,7 @@ _Date: 2026-06-01. Branch: `feat/new-order-email`. Single-user app._
 
 When body-only extraction (Phase 3) leaves an order at `needs_review` and its reply has
 attachments, fetch the reply's **PDF** attachments, extract their text, and run the same
-`extractOrderInfo` over that text to fill the missing `numarComanda` / delivery date.
+`extractOrderInfo` over that text to fill the missing `orderNumber` / delivery date.
 
 Images/JPGs (OCR) remain out of scope — **PDFs only**.
 
@@ -31,11 +31,11 @@ Start from the body result. For each PDF attachment **in order**:
 4. stop as soon as both values are present (`status === "extracted"`).
 
 `mergeMissing(base, extra)` (pure, in `lib/extraction.ts`):
-- `numarComanda = base.numarComanda ?? extra.numarComanda`.
+- `orderNumber = base.orderNumber ?? extra.orderNumber`.
 - Delivery is **all-or-nothing**: only if `base.deliveryEarliest === null` and
-  `extra.deliveryEarliest !== null`, take `extra`'s `timpLivrare` + `deliveryEarliest` +
+  `extra.deliveryEarliest !== null`, take `extra`'s `deliveryTime` + `deliveryEarliest` +
   `deliveryLatest` together.
-- `status = numarComanda && deliveryEarliest ? "extracted" : "needs_review"`.
+- `status = orderNumber && deliveryEarliest ? "extracted" : "needs_review"`.
 
 A confident body value is never overwritten by a PDF value.
 
@@ -136,7 +136,7 @@ async function extractForOrder(
   const today = deps.now().toISOString().slice(0, 10);
   let result: ExtractionResult = reply?.body
     ? await deps.extractOrderInfo(reply.body, today)
-    : { numarComanda: null, timpLivrare: null, deliveryEarliest: null, deliveryLatest: null, status: "needs_review" };
+    : { orderNumber: null, deliveryTime: null, deliveryEarliest: null, deliveryLatest: null, status: "needs_review" };
 
   if (result.status !== "extracted" && reply?.hasAttachments && accessToken && reply.graphMessageId) {
     const pdfs = await deps.listPdfAttachments(accessToken, reply.graphMessageId);
@@ -151,8 +151,8 @@ async function extractForOrder(
   await deps.prisma.order.update({
     where: { id: orderId },
     data: {
-      numarComanda: result.numarComanda,
-      timpLivrare: result.timpLivrare,
+      orderNumber: result.orderNumber,
+      deliveryTime: result.deliveryTime,
       deliveryEarliest: result.deliveryEarliest,
       deliveryLatest: result.deliveryLatest,
       replyStatus: result.status,
@@ -181,7 +181,7 @@ No change — PDF bytes/text are transient, never persisted.
 ## Testing
 
 **`extraction.test.ts`** (`mergeMissing`):
-- body has `numarComanda`, PDF supplies delivery → merged `extracted`, both set.
+- body has `orderNumber`, PDF supplies delivery → merged `extracted`, both set.
 - body empty, PDF supplies both → `extracted`.
 - body already has both → `mergeMissing` no-op (delivery not overwritten).
 - PDF result all-null → base unchanged, still `needs_review`.

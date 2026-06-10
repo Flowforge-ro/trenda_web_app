@@ -7,37 +7,69 @@ datasource db {
   provider = "postgresql"
 }
 
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  users     User[]
+  mailboxes Mailbox[]
+  orders    Order[]
+}
+
 model User {
-  id                    String   @id @default(cuid())
-  email                 String   @unique
-  name                  String?
-  microsoftId           String?  @unique
-  encryptedRefreshToken String?
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  id           String        @id @default(cuid())
+  orgId        String?
+  org          Organization? @relation(fields: [orgId], references: [id])
+  email        String        @unique
+  passwordHash String
+  role         String        @default("member")
+  name         String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  mailboxes    Mailbox[]     @relation("ConnectedBy")
+  orders       Order[]       @relation("CreatedBy")
+}
+
+model Mailbox {
+  id                    String       @id @default(cuid())
+  orgId                 String
+  org                   Organization @relation(fields: [orgId], references: [id])
+  microsoftId           String       @unique
+  email                 String
+  type                  String
+  encryptedRefreshToken String
+  connectedByUserId     String
+  connectedBy           User         @relation("ConnectedBy", fields: [connectedByUserId], references: [id])
   lastPolledAt          DateTime?
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
   orders                Order[]
 }
 
 model Order {
-  id                String   @id @default(cuid())
-  userId            String
-  user              User     @relation(fields: [userId], references: [id])
-  emailFurnizor     String
-  serieSasiu        String
-  piesa             String
-  status            String   @default("În așteptare")
-  numarComanda      String?
-  timpLivrare       String?
-  deliveryEarliest  DateTime?
+  id                  String       @id @default(cuid())
+  orgId               String
+  org                 Organization @relation(fields: [orgId], references: [id])
+  mailboxId           String
+  mailbox             Mailbox      @relation(fields: [mailboxId], references: [id])
+  createdByUserId     String
+  createdBy           User         @relation("CreatedBy", fields: [createdByUserId], references: [id])
+  emailFurnizor       String
+  serieSasiu          String
+  piesa               String
+  status              String       @default("În așteptare")
+  orderNumber         String?
+  deliveryTime        String?
+  deliveryEarliest    DateTime?
   deliveryLatest      DateTime?
   statusRequestSentAt DateTime?
   internetMessageId   String?
-  emailStatus       String   @default("trimis")
-  replyStatus       String   @default("awaiting_reply")
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  replies           OrderReply[]
+  emailStatus         String       @default("trimis")
+  replyStatus         String       @default("awaiting_reply")
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+  replies             OrderReply[]
 }
 
 model OrderReply {
@@ -52,4 +84,24 @@ model OrderReply {
   hasAttachments    Boolean  @default(false)
   body              String?
   createdAt         DateTime @default(now())
+}
+
+model Log {
+  id        String   @id @default(cuid())
+  level     String // "info" | "warn" | "error"
+  source    String // "frontend" | "backend"
+  message   String
+  stack     String?
+  context   Json?
+  requestId String? // correlates a frontend action to the backend request it triggered
+  userId    String?
+  orgId     String?
+  url       String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([level])
+  @@index([source])
+  @@index([requestId])
 }

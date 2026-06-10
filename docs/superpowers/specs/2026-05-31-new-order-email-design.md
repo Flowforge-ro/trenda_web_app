@@ -45,8 +45,8 @@ model Order {
   serieSasiu        String
   piesa             String
   status            String   @default("În așteptare") // matches UI statuses
-  numarComanda      String?  // null now; filled later from supplier reply
-  timpLivrare       String?  // null now; filled later from supplier reply
+  orderNumber      String?  // null now; filled later from supplier reply
+  deliveryTime       String?  // null now; filled later from supplier reply
   internetMessageId String?  // for matching the reply
   emailStatus       String   @default("trimis")        // "trimis" | "esuat"
   createdAt         DateTime @default(now())
@@ -113,7 +113,7 @@ to the service.
 
 ### `pages/orders.tsx`
 - Replace the placeholder array with `useOrders()`.
-- `numarComanda` and `timpLivrare` render as `—` when null.
+- `orderNumber` and `deliveryTime` render as `—` when null.
 
 ## Error handling
 

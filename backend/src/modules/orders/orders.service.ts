@@ -1,19 +1,18 @@
 import { z } from "zod";
 import { prisma } from "../../prisma.js";
 import { decrypt, encrypt } from "../../lib/crypto.js";
-import {
-  getAccessTokenFromRefreshToken,
-  createAndSendMail,
-} from "../../lib/microsoft.js";
+import { getAccessTokenFromRefreshToken, createAndSendMail } from "../../lib/microsoft.js";
 import { renderStatusRequest } from "../../lib/template.js";
+import { getMailboxAccessToken } from "../../lib/mailbox-token.js";
+import { logError } from "../../lib/db-log.js";
 import type { Order } from "../../generated/prisma/client.js";
 
 export const orderInputSchema = z.object({
   emailFurnizor: z.string().email(),
   serieSasiu: z.string().min(1),
   piesa: z.string().min(1),
+  mailboxId: z.string().min(1),
 });
-
 export type OrderInput = z.infer<typeof orderInputSchema>;
 
 export interface OrderDeps {
@@ -35,13 +34,22 @@ const defaultDeps: OrderDeps = {
 };
 
 export async function createOrder(
+  orgId: string,
   userId: string,
   input: OrderInput,
   deps: OrderDeps = defaultDeps
 ) {
+  const mailbox = await deps.prisma.mailbox.findFirst({
+    where: { id: input.mailboxId, orgId, type: "vendor_facing" },
+    select: { id: true },
+  });
+  if (!mailbox) return null;
+
   const order = await deps.prisma.order.create({
     data: {
-      userId,
+      orgId,
+      createdByUserId: userId,
+      mailboxId: mailbox.id,
       emailFurnizor: input.emailFurnizor,
       serieSasiu: input.serieSasiu,
       piesa: input.piesa,
@@ -51,42 +59,24 @@ export async function createOrder(
   return sendOrderEmail(order, deps);
 }
 
-export async function resendOrderEmail(
-  userId: string,
-  orderId: string,
-  deps: OrderDeps = defaultDeps
-) {
-  const order = await deps.prisma.order.findFirst({ where: { id: orderId, userId } });
+export async function resendOrderEmail(orgId: string, orderId: string, deps: OrderDeps = defaultDeps) {
+  const order = await deps.prisma.order.findFirst({ where: { id: orderId, orgId } });
   if (!order) return null;
   return sendOrderEmail(order, deps);
 }
 
-async function sendOrderEmail(order: Pick<Order, "id" | "userId" | "emailFurnizor" | "serieSasiu" | "piesa">, deps: OrderDeps) {
+async function sendOrderEmail(
+  order: Pick<Order, "id" | "mailboxId" | "emailFurnizor" | "serieSasiu" | "piesa">,
+  deps: OrderDeps
+) {
   try {
-    const user = await deps.prisma.user.findUnique({
-      where: { id: order.userId },
-      select: { encryptedRefreshToken: true },
-    });
-    if (!user?.encryptedRefreshToken) {
-      throw new Error("User has no stored refresh token");
-    }
-
-    const { accessToken, refreshToken } =
-      await deps.getAccessTokenFromRefreshToken(deps.decrypt(user.encryptedRefreshToken));
-    if (refreshToken) {
-      await deps.prisma.user.update({
-        where: { id: order.userId },
-        data: { encryptedRefreshToken: deps.encrypt(refreshToken) },
-      });
-    }
+    const accessToken = await getMailboxAccessToken(deps, order.mailboxId);
+    if (!accessToken) throw new Error("Mailbox has no usable token");
 
     const { internetMessageId } = await deps.createAndSendMail(accessToken, {
       to: order.emailFurnizor,
       subject: `Cerere comandă piesă — ${order.serieSasiu}`,
-      body: deps.renderStatusRequest({
-        piesa: order.piesa,
-        serieSasiu: order.serieSasiu,
-      }),
+      body: deps.renderStatusRequest({ piesa: order.piesa, serieSasiu: order.serieSasiu }),
     });
 
     const updated = await deps.prisma.order.update({
@@ -95,7 +85,7 @@ async function sendOrderEmail(order: Pick<Order, "id" | "userId" | "emailFurnizo
     });
     return { order: updated, emailSent: true };
   } catch (err) {
-    console.error("Order email failed:", err);
+    logError("Order email failed", err, { orderId: order.id });
     const updated = await deps.prisma.order.update({
       where: { id: order.id },
       data: { emailStatus: "esuat" },
@@ -104,9 +94,6 @@ async function sendOrderEmail(order: Pick<Order, "id" | "userId" | "emailFurnizo
   }
 }
 
-export function listOrders(userId: string, db: typeof prisma = prisma) {
-  return db.order.findMany({
-    where: { userId },
-    orderBy: { createdAt: "desc" },
-  });
+export function listOrders(orgId: string, db: typeof prisma = prisma) {
+  return db.order.findMany({ where: { orgId }, orderBy: { createdAt: "desc" } });
 }
