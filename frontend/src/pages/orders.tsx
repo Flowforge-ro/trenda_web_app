@@ -7,40 +7,25 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { NewOrderDialog } from "@/components/orders/new-order-dialog";
+import { OrderReviewDialog } from "@/components/orders/order-review-dialog";
 import { cn } from "@/lib/utils";
+import { RotateCw } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { useOrders, useResendOrder, formatDeliveryCountdown, type Order } from "@/lib/orders";
 
-type OrderStatus = "Livrat" | "În tranzit" | "În așteptare" | "Anulat";
-
-interface Order {
-  numarComanda: string;
-  piesa: string;
-  serieSasiu: string;
-  status: OrderStatus;
-  timpLivrare: string;
-}
-
-// Placeholder data — replace with API data later.
-const orders: Order[] = [
-  { numarComanda: "CMD-1001", piesa: "Filtru ulei", serieSasiu: "WVWZZZ1KZAW000001", status: "Livrat", timpLivrare: "2 zile" },
-  { numarComanda: "CMD-1002", piesa: "Plăcuțe frână", serieSasiu: "WAUZZZ8K9BA000002", status: "În tranzit", timpLivrare: "4 zile" },
-  { numarComanda: "CMD-1003", piesa: "Alternator", serieSasiu: "VF1RFB00000000003", status: "În așteptare", timpLivrare: "—" },
-  { numarComanda: "CMD-1004", piesa: "Radiator apă", serieSasiu: "ZFA31200000000004", status: "Anulat", timpLivrare: "—" },
-  { numarComanda: "CMD-1005", piesa: "Pompă combustibil", serieSasiu: "WBA3A5C50DF000005", status: "Livrat", timpLivrare: "1 zi" },
-];
-
-const statusStyles: Record<OrderStatus, string> = {
+const statusStyles: Record<string, string> = {
   "Livrat": "bg-success/10 text-success",
   "În tranzit": "bg-warning/10 text-warning",
   "În așteptare": "bg-muted text-muted-foreground",
   "Anulat": "bg-error/10 text-error",
 };
 
-function StatusBadge({ status }: { status: OrderStatus }) {
+function StatusBadge({ status }: { status: string }) {
   return (
     <span
       className={cn(
         "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium",
-        statusStyles[status]
+        statusStyles[status] ?? "bg-muted text-muted-foreground"
       )}
     >
       {status}
@@ -48,9 +33,52 @@ function StatusBadge({ status }: { status: OrderStatus }) {
   );
 }
 
+function StatusCell({ order }: { order: Order }) {
+  const resend = useResendOrder();
+  const reviewBadge =
+    order.replyStatus === "needs_review" ? <OrderReviewDialog order={order} /> : null;
+
+  if (order.emailStatus === "trimis") {
+    return (
+      <div className="flex items-center gap-2">
+        <StatusBadge status={order.status} />
+        {reviewBadge}
+      </div>
+    );
+  }
+  const failed = order.emailStatus === "esuat";
+  return (
+    <div className="flex items-center gap-2">
+      <StatusBadge status={order.status} />
+      {reviewBadge}
+      <span
+        className={cn(
+          "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
+          failed ? "bg-error/10 text-error" : "bg-warning/10 text-warning"
+        )}
+      >
+        {failed ? "email eșuat" : "se trimite…"}
+      </span>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="h-6 w-6"
+        disabled={resend.isPending}
+        onClick={() => resend.mutate(order.id)}
+        title="Retrimite email"
+      >
+        <RotateCw className="h-3.5 w-3.5" />
+      </Button>
+    </div>
+  );
+}
+
 const columns = ["Numar comanda", "Piesa", "Serie sasiu", "Status", "Timp livrare"];
 
 export function OrdersPage() {
+  const { data: orders = [], isLoading } = useOrders();
+
   return (
     <div className="p-8">
       <header className="mb-6 flex items-start justify-between gap-4">
@@ -77,25 +105,33 @@ export function OrdersPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {orders.map((o) => (
-              <TableRow key={o.numarComanda} className="hover:bg-gray-100">
-                <TableCell className="px-4 py-3 font-medium text-foreground">
-                  {o.numarComanda}
-                </TableCell>
-                <TableCell className="px-4 py-3 text-foreground">
-                  {o.piesa}
-                </TableCell>
-                <TableCell className="px-4 py-3 font-mono text-xs text-muted-foreground">
-                  {o.serieSasiu}
-                </TableCell>
-                <TableCell className="px-4 py-3">
-                  <StatusBadge status={o.status} />
-                </TableCell>
-                <TableCell className="px-4 py-3 text-foreground">
-                  {o.timpLivrare}
+            {isLoading ? (
+              <TableRow>
+                <TableCell colSpan={columns.length} className="px-4 py-6 text-center text-muted-foreground">
+                  Se încarcă...
                 </TableCell>
               </TableRow>
-            ))}
+            ) : (
+              orders.map((o) => (
+                <TableRow key={o.id} className="hover:bg-gray-100">
+                  <TableCell className="px-4 py-3 font-medium text-foreground">
+                    {o.numarComanda ?? "—"}
+                  </TableCell>
+                  <TableCell className="px-4 py-3 text-foreground">{o.piesa}</TableCell>
+                  <TableCell className="px-4 py-3 font-mono text-xs text-muted-foreground">
+                    {o.serieSasiu}
+                  </TableCell>
+                  <TableCell className="px-4 py-3">
+                    <StatusCell order={o} />
+                  </TableCell>
+                  <TableCell className="px-4 py-3 text-foreground" title={o.timpLivrare ?? undefined}>
+                    {o.deliveryEarliest && o.deliveryLatest
+                      ? formatDeliveryCountdown(o.deliveryEarliest, o.deliveryLatest)
+                      : o.timpLivrare ?? "—"}
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
           </TableBody>
         </Table>
       </div>
