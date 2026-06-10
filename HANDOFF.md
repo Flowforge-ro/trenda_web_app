@@ -17,6 +17,8 @@ review resolve the token from the order's mailbox. Superadmin creates orgs+admin
 `cd backend && SEED_SUPERADMIN_EMAIL=… SEED_SUPERADMIN_PASSWORD=… npm run db:seed`.
 **The deferred migration below is superseded** — run `cd backend && npx prisma migrate
 dev --name baseline_auth_orgs` (resets the dev DB) once Postgres is up, then seed.
+(Schema has since also gained `Log.requestId` and `Order.closedAt` — both land in
+that same baseline migration; client already regenerated.)
 Backend 96/96 green + `tsc` clean; frontend `tsc -b` clean; **no live smoke yet**.
 Out of scope: client_facing logic, org deletion, password reset.
 
@@ -121,8 +123,8 @@ The entire Phase-1 E2E 401 saga was an **account/tenant problem, not code**:
 2. **Live verification** (none done yet): with a licensed mailbox signed in and the DB
    migrated, confirm a real reply gets ingested → extracted, and that a Gemini call works
    with `GOOGLE_LLM_API_KEY` + model `gemini-3.5-flash` (set in `lib/extraction.ts` —
-   confirm that model id is valid for the key; swap if not). The poll interval in
-   `poll.worker.ts` may currently be set to a long dev value — check before relying on it.
+   confirm that model id is valid for the key; swap if not). Poll interval defaults to
+   5 min; override with `POLL_INTERVAL_MS` (ms) in `.env` for faster dev cycles.
 
 ## Next steps (candidates)
 - ~~Manual-correction UI for `needs_review` orders~~ — done (`PATCH /orders/:id/review` +

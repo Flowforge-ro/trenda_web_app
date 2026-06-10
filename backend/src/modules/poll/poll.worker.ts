@@ -1,7 +1,12 @@
 import { pollReplies } from "./poll.service.js";
 import { logError } from "../../lib/db-log.js";
 
-const POLL_INTERVAL_MS = 1 * 10 * 1000;
+const DEFAULT_POLL_INTERVAL_MS = 5 * 60 * 1000;
+
+export function pollIntervalMs(env: Record<string, string | undefined> = process.env): number {
+  const parsed = Number(env.POLL_INTERVAL_MS);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_POLL_INTERVAL_MS;
+}
 
 let running = false;
 
@@ -16,5 +21,5 @@ export function startPolling(): void {
     } finally {
       running = false;
     }
-  }, POLL_INTERVAL_MS).unref();
+  }, pollIntervalMs()).unref();
 }

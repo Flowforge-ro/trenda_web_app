@@ -32,6 +32,9 @@ const defaultDeps: PollDeps = {
 };
 
 const OVERLAP_MS = 2 * 60 * 1000;
+// Orders older than this stop being matched against incoming mail, so the
+// per-poll matching set stays bounded even when nobody closes their orders.
+const MATCH_WINDOW_MS = 60 * 24 * 60 * 60 * 1000;
 
 function daysUntil(date: Date, now: Date): number {
   const startOfDay = (d: Date) => Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
@@ -50,7 +53,12 @@ async function ingestReplies(deps: PollDeps): Promise<void> {
   // No replyStatus filter: a supplier may send a correction after the first
   // reply was already ingested/extracted, and it must re-enter the pipeline.
   const matchable = (await deps.prisma.order.findMany({
-    where: { emailStatus: "trimis", internetMessageId: { not: null } },
+    where: {
+      emailStatus: "trimis",
+      internetMessageId: { not: null },
+      closedAt: null,
+      createdAt: { gte: new Date(deps.now().getTime() - MATCH_WINDOW_MS) },
+    },
     select: { id: true, mailboxId: true, internetMessageId: true, createdAt: true },
   })) as MatchableOrder[];
   if (matchable.length === 0) return;
@@ -75,7 +83,7 @@ type PendingOrder = Pick<Order, "id" | "mailboxId" | "orderNumber" | "deliveryTi
 
 async function extractPending(deps: PollDeps): Promise<void> {
   const pending = (await deps.prisma.order.findMany({
-    where: { replyStatus: "reply_received" },
+    where: { replyStatus: "reply_received", closedAt: null },
     select: { id: true, mailboxId: true, orderNumber: true, deliveryTime: true, deliveryEarliest: true, deliveryLatest: true },
   })) as PendingOrder[];
   if (pending.length === 0) return;
@@ -161,7 +169,7 @@ type DueOrder = Pick<Order, "id" | "mailboxId" | "emailFurnizor" | "serieSasiu" 
 
 async function requestStatusUpdates(deps: PollDeps): Promise<void> {
   const candidates = (await deps.prisma.order.findMany({
-    where: { deliveryEarliest: { not: null }, statusRequestSentAt: null },
+    where: { deliveryEarliest: { not: null }, statusRequestSentAt: null, closedAt: null },
     select: { id: true, mailboxId: true, emailFurnizor: true, serieSasiu: true, deliveryEarliest: true },
   })) as DueOrder[];
 

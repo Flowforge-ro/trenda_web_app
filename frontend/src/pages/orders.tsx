@@ -9,9 +9,9 @@ import {
 import { NewOrderDialog } from "@/components/orders/new-order-dialog";
 import { OrderReviewDialog } from "@/components/orders/order-review-dialog";
 import { cn } from "@/lib/utils";
-import { RotateCw } from "lucide-react";
+import { CheckCircle2, RotateCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useOrders, useResendOrder, formatDeliveryCountdown, type Order } from "@/lib/orders";
+import { useOrders, useResendOrder, useCloseOrder, formatDeliveryCountdown, type Order } from "@/lib/orders";
 
 const statusStyles: Record<string, string> = {
   "Livrat": "bg-success/10 text-success",
@@ -35,6 +35,15 @@ function StatusBadge({ status }: { status: string }) {
 
 function StatusCell({ order }: { order: Order }) {
   const resend = useResendOrder();
+
+  if (order.closedAt) {
+    return (
+      <span className="inline-flex items-center rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
+        Închisă
+      </span>
+    );
+  }
+
   const reviewBadge =
     order.replyStatus === "needs_review" ? <OrderReviewDialog order={order} /> : null;
 
@@ -74,10 +83,29 @@ function StatusCell({ order }: { order: Order }) {
   );
 }
 
-const columns = ["Numar comanda", "Piesa", "Serie sasiu", "Status", "Timp livrare"];
+function CloseOrderButton({ order }: { order: Order }) {
+  const close = useCloseOrder();
+  if (order.closedAt) return null;
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon"
+      className="h-6 w-6"
+      disabled={close.isPending}
+      onClick={() => close.mutate(order.id)}
+      title="Închide comanda"
+    >
+      <CheckCircle2 className="h-3.5 w-3.5" />
+    </Button>
+  );
+}
+
+const columns = ["Numar comanda", "Piesa", "Serie sasiu", "Status", "Timp livrare", ""];
 
 export function OrdersPage() {
-  const { data: orders = [], isLoading } = useOrders();
+  const { data, isLoading, hasNextPage, fetchNextPage, isFetchingNextPage } = useOrders();
+  const orders = data?.pages.flatMap((p) => p.orders) ?? [];
 
   return (
     <div className="p-8">
@@ -97,8 +125,8 @@ export function OrdersPage() {
         <Table>
           <TableHeader>
             <TableRow className="bg-gray-50 hover:bg-gray-50">
-              {columns.map((c) => (
-                <TableHead key={c} className="px-4 text-muted-foreground">
+              {columns.map((c, i) => (
+                <TableHead key={i} className="px-4 text-muted-foreground">
                   {c}
                 </TableHead>
               ))}
@@ -129,12 +157,28 @@ export function OrdersPage() {
                       ? formatDeliveryCountdown(o.deliveryEarliest, o.deliveryLatest)
                       : o.deliveryTime ?? "—"}
                   </TableCell>
+                  <TableCell className="px-4 py-3 text-right">
+                    <CloseOrderButton order={o} />
+                  </TableCell>
                 </TableRow>
               ))
             )}
           </TableBody>
         </Table>
       </div>
+
+      {hasNextPage && (
+        <div className="mt-4 flex justify-center">
+          <Button
+            type="button"
+            variant="outline"
+            disabled={isFetchingNextPage}
+            onClick={() => fetchNextPage()}
+          >
+            {isFetchingNextPage ? "Se încarcă..." : "Încarcă mai multe"}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

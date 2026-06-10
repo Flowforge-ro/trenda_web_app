@@ -94,6 +94,29 @@ async function sendOrderEmail(
   }
 }
 
-export function listOrders(orgId: string, db: typeof prisma = prisma) {
-  return db.order.findMany({ where: { orgId }, orderBy: { createdAt: "desc" } });
+export const listOrdersQuerySchema = z.object({
+  cursor: z.string().min(1).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+});
+export type ListOrdersQuery = z.infer<typeof listOrdersQuerySchema>;
+
+export async function listOrders(orgId: string, query: ListOrdersQuery, db: typeof prisma = prisma) {
+  // take one extra row purely to know whether a next page exists
+  const rows = await db.order.findMany({
+    where: { orgId },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    take: query.limit + 1,
+    ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
+  });
+  const orders = rows.slice(0, query.limit);
+  const nextCursor = rows.length > query.limit ? orders[orders.length - 1].id : null;
+  return { orders, nextCursor };
+}
+
+/** Terminal state: a closed order leaves the poll/extract/nudge pipeline. Idempotent. */
+export async function closeOrder(orgId: string, orderId: string, deps: OrderDeps = defaultDeps) {
+  const order = await deps.prisma.order.findFirst({ where: { id: orderId, orgId } });
+  if (!order) return null;
+  if (order.closedAt) return order;
+  return deps.prisma.order.update({ where: { id: orderId }, data: { closedAt: new Date() } });
 }

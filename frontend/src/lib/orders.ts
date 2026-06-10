@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { API_BASE } from "./api";
 import { apiFetch } from "./http";
 import { logAction } from "./logger";
@@ -15,6 +15,7 @@ export interface Order {
   deliveryLatest: string | null;
   replyStatus: string;
   emailStatus: string;
+  closedAt: string | null;
   createdAt: string;
 }
 
@@ -40,14 +41,28 @@ async function createOrder(payload: NewOrderPayload): Promise<CreateOrderResult>
   return res.json();
 }
 
-async function fetchOrders(): Promise<Order[]> {
-  const res = await apiFetch("/orders");
+const ORDERS_PAGE_SIZE = 50;
+
+interface OrdersPage {
+  orders: Order[];
+  nextCursor: string | null;
+}
+
+async function fetchOrders(cursor?: string): Promise<OrdersPage> {
+  const params = new URLSearchParams({ limit: String(ORDERS_PAGE_SIZE) });
+  if (cursor) params.set("cursor", cursor);
+  const res = await apiFetch(`/orders?${params}`);
   if (!res.ok) throw new Error("Nu s-au putut încărca comenzile");
   return res.json();
 }
 
 export function useOrders() {
-  return useQuery({ queryKey: ["orders"], queryFn: fetchOrders });
+  return useInfiniteQuery({
+    queryKey: ["orders"],
+    queryFn: ({ pageParam }) => fetchOrders(pageParam),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
+  });
 }
 
 async function resendOrder(id: string): Promise<CreateOrderResult> {
@@ -63,6 +78,23 @@ export function useResendOrder() {
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["orders"] });
       logAction("order.resend", { orderId: data.order.id, emailSent: data.emailSent });
+    },
+  });
+}
+
+async function closeOrder(id: string): Promise<{ order: Order }> {
+  const res = await apiFetch(`/orders/${id}/close`, { method: "POST" });
+  if (!res.ok) throw new Error("Închiderea comenzii a eșuat");
+  return res.json();
+}
+
+export function useCloseOrder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: closeOrder,
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["orders"] });
+      logAction("order.close", { orderId: data.order.id });
     },
   });
 }

@@ -44,6 +44,12 @@ test("POST /orders/:id/resend without a session returns 401", async () => {
   assert.equal(res.statusCode, 401);
 });
 
+test("POST /orders/:id/close without a session returns 401", async () => {
+  const res = await app.inject({ method: "POST", url: "/orders/O1/close" });
+
+  assert.equal(res.statusCode, 401);
+});
+
 test("GET /orders/:id/review without a session returns 401", async () => {
   const res = await app.inject({ method: "GET", url: "/orders/O1/review" });
   assert.equal(res.statusCode, 401);
