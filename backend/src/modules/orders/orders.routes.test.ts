@@ -99,9 +99,12 @@ before(async () => {
       },
     },
     order: {
-      findMany({ where }: { where: { orgId: string }; take?: number }) {
-        if (where.orgId === ORG_ID) return Promise.resolve([fakeOrder]);
-        return Promise.resolve([]);
+      findMany({ where, take }: { where: { orgId: string }; take?: number }) {
+        if (where.orgId !== ORG_ID) return Promise.resolve([]);
+        // When take <= 2 (limit=1 → take=2), return 2 rows so the service sees
+        // a next page.  All other calls (take > 2) get one row → no next page.
+        if (take !== undefined && take <= 2) return Promise.resolve([fakeOrder, fakeOrder]);
+        return Promise.resolve([fakeOrder]);
       },
       findFirst({ where }: { where: { id?: string; orgId?: string } }) {
         if (where.id === fakeOrder.id && where.orgId === ORG_ID)
@@ -304,4 +307,24 @@ test("GET /orders with explicit limit returns correct shape", async () => {
   const body = res.json();
   assert.ok(Array.isArray(body.orders));
   assert.ok("nextCursor" in body);
+});
+
+// ---------------------------------------------------------------------------
+// has-next-page path: findMany returns limit+1 rows → nextCursor is non-null
+// ---------------------------------------------------------------------------
+
+test("GET /orders with limit=1 and two DB rows returns nextCursor and exactly 1 order", async () => {
+  // The fake findMany returns 2 rows when take<=2 (limit=1 → take=2).
+  // listOrders slices to limit=1 and sets nextCursor to the last row's id.
+  const res = await app.inject({
+    method: "GET",
+    url: "/orders?limit=1",
+    headers: { cookie: memberCookie },
+  });
+  assert.equal(res.statusCode, 200);
+  const body = res.json();
+  assert.ok(Array.isArray(body.orders));
+  assert.equal(body.orders.length, 1, "should return exactly limit=1 order");
+  assert.ok(body.nextCursor !== null, "nextCursor should be non-null when more rows exist");
+  assert.equal(body.nextCursor, fakeOrder.id, "nextCursor should be the last returned order's id");
 });
