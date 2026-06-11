@@ -2,7 +2,7 @@
 
 Audited 2026-06-11 on `feat/password-auth-orgs`. Ordered by priority.
 
-**Status 2026-06-11:** all items fixed except #6 (route/frontend test suites — only 401-path route tests exist) and #13 (session revocation — needs schema + design decision). #8 indexes are in schema.prisma but the migration must be generated on a machine with Postgres. See WORKLOG.md for per-item details.
+**Status 2026-06-11 (evening):** all items fixed except #13, which is deferred — there is no password-change feature yet, so session-revocation machinery would be dead code; revisit when one is added. #8 indexes are in schema.prisma but the migration is still pending (dev DB migration history diverged from the repo; schema changes currently applied via `db push`).
 
 ## High priority
 
@@ -28,7 +28,7 @@ Audited 2026-06-11 on `feat/password-auth-orgs`. Ordered by priority.
 `backend/src/system/auth/login.service.ts:17-19` — unknown email returns immediately; known email pays the argon2 verify cost (~100 ms). Response-time difference reveals which emails have accounts.
 **Fix:** verify against a static dummy hash when the user is not found.
 
-### 6. Route handlers untested + zero frontend tests
+### 6. ✅ FIXED — Route handlers untested + zero frontend tests
 Graph reports 20 untested hotspots; the biggest are `ordersRoutes` (degree 59), `mailboxesRoutes` (39), `organizationsRoutes` (21), `usersRoutes` (16), `authRoutes` (19) — services are tested, but the auth-guard/status-code/param-parsing layer is not. Frontend has no tests at all (`OrderReviewDialog`, `NewOrderDialog`, `OrdersPage`, `apiFetch` all untested).
 **Fix:** `app.inject()` tests per route covering 401/403/404/400 paths (works without Postgres using the existing fake-deps pattern); start frontend testing with `apiFetch` and the order dialogs (vitest + testing-library).
 
@@ -59,8 +59,9 @@ Graph reports 20 untested hotspots; the biggest are `ordersRoutes` (degree 59), 
 ### 12. ✅ FIXED — Unnecessary Prisma result casts
 `poll.service.ts:55,85,171` — `as MatchableOrder[]` etc. on `findMany` results with `select`. Prisma already infers these shapes; the casts can mask schema drift. Remove them.
 
-### 13. Stateless sessions can't be revoked
+### 13. DEFERRED — Stateless sessions can't be revoked
 `@fastify/secure-session` is cookie-stateful only. `loadSessionUser` re-fetches the user (so deletion logs people out), but a password change does not invalidate existing sessions. If this matters, store a `sessionVersion`/`passwordChangedAt` on `User` and reject older sessions.
+**Deferred 2026-06-11:** no password-change endpoint exists anywhere in the app, so there is nothing that would ever bump `sessionVersion` — implement together with the first password-change feature. (Org suspension already kills sessions immediately via the `requireRole` org check.)
 
 ### 14. ✅ FIXED — Log table retention
 `Log` rows accumulate forever (frontend + backend errors + 5xx persists). Add a periodic delete of rows older than N days (could ride the existing poll worker).
