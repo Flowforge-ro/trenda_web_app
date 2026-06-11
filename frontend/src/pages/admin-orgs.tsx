@@ -7,7 +7,7 @@ import {
   Dialog, DialogClose, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { useOrganizations, useCreateOrganization } from "@/lib/organizations";
+import { useOrganizations, useCreateOrganization, useSetOrganizationSuspended, type Organization } from "@/lib/organizations";
 import { useAuth } from "@/lib/auth";
 import { apiFetch } from "@/lib/http";
 import { logAction } from "@/lib/logger";
@@ -71,6 +71,22 @@ function CreateOrgDialog() {
   );
 }
 
+function SuspendButton({ org }: { org: Organization }) {
+  const setSuspended = useSetOrganizationSuspended();
+  const suspended = org.suspendedAt !== null;
+
+  function toggle() {
+    if (!suspended && !window.confirm(`Suspendați organizația „${org.name}”? Utilizatorii ei vor pierde accesul imediat.`)) return;
+    setSuspended.mutate({ id: org.id, suspended: !suspended });
+  }
+
+  return (
+    <Button variant="outline" size="sm" onClick={toggle} disabled={setSuspended.isPending}>
+      {suspended ? "Reactivează" : "Suspendă"}
+    </Button>
+  );
+}
+
 export function AdminOrgsPage() {
   const { data: user } = useAuth();
   const { data: orgs = [], isLoading } = useOrganizations();
@@ -96,11 +112,13 @@ export function AdminOrgsPage() {
               <TableHead className="px-4 text-muted-foreground">Utilizatori</TableHead>
               <TableHead className="px-4 text-muted-foreground">Cutii poștale</TableHead>
               <TableHead className="px-4 text-muted-foreground">Creată</TableHead>
+              <TableHead className="px-4 text-muted-foreground">Stare</TableHead>
+              <TableHead className="px-4 text-muted-foreground" />
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableRow><TableCell colSpan={4} className="px-4 py-6 text-center text-muted-foreground">Se încarcă...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={6} className="px-4 py-6 text-center text-muted-foreground">Se încarcă...</TableCell></TableRow>
             ) : (
               orgs.map((o) => (
                 <TableRow key={o.id} className="hover:bg-gray-100">
@@ -108,6 +126,16 @@ export function AdminOrgsPage() {
                   <TableCell className="px-4 py-3 text-foreground">{o.userCount}</TableCell>
                   <TableCell className="px-4 py-3 text-foreground">{o.mailboxCount}</TableCell>
                   <TableCell className="px-4 py-3 text-muted-foreground">{new Date(o.createdAt).toLocaleDateString("ro-RO")}</TableCell>
+                  <TableCell className="px-4 py-3">
+                    {o.suspendedAt ? (
+                      <span className="inline-flex rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">Suspendată</span>
+                    ) : (
+                      <span className="inline-flex rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">Activă</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="px-4 py-3 text-right">
+                    <SuspendButton org={o} />
+                  </TableCell>
                 </TableRow>
               ))
             )}

@@ -1,6 +1,12 @@
 import type { FastifyPluginAsync } from "fastify";
 import { requireRole } from "../../lib/auth-context.js";
-import { createOrganization, listOrganizations, createOrgSchema } from "./organizations.service.js";
+import {
+  createOrganization,
+  listOrganizations,
+  createOrgSchema,
+  setOrgSuspended,
+  patchOrgSchema,
+} from "./organizations.service.js";
 
 export const organizationsRoutes: FastifyPluginAsync = async (app) => {
   app.addHook("preHandler", async (request, reply) => {
@@ -23,4 +29,15 @@ export const organizationsRoutes: FastifyPluginAsync = async (app) => {
   });
 
   app.get("/organizations", async () => listOrganizations());
+
+  app.patch("/organizations/:id", async (request, reply) => {
+    const parsed = patchOrgSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Invalid payload", details: parsed.error.flatten() });
+    }
+    const { id } = request.params as { id: string };
+    const found = await setOrgSuspended(id, parsed.data.suspended);
+    if (!found) return reply.status(404).send({ error: "Not found" });
+    return { ok: true };
+  });
 };

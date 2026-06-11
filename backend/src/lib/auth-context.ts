@@ -8,6 +8,7 @@ export interface SessionUser {
   name: string | null;
   role: string;
   orgId: string | null;
+  orgSuspendedAt: Date | null;
 }
 
 export interface AuthDeps {
@@ -24,9 +25,24 @@ export async function loadSessionUser(
   if (!userId) return null;
   const user = await deps.prisma.user.findUnique({
     where: { id: userId },
-    select: { id: true, email: true, name: true, role: true, orgId: true },
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      role: true,
+      orgId: true,
+      org: { select: { suspendedAt: true } },
+    },
   });
-  return user ?? null;
+  if (!user) return null;
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    role: user.role,
+    orgId: user.orgId,
+    orgSuspendedAt: user.org?.suspendedAt ?? null,
+  };
 }
 
 /** A session user guaranteed to belong to an organization. */
@@ -60,6 +76,10 @@ export async function requireRole(
   const user = await loadSessionUser(request.session, deps);
   if (!user) {
     reply.status(401).send({ error: "Not authenticated" });
+    return null;
+  }
+  if (user.orgSuspendedAt && user.role !== "superadmin") {
+    reply.status(403).send({ error: "Organization suspended" });
     return null;
   }
   const allowed =

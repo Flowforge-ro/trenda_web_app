@@ -71,6 +71,7 @@ async function ingestReplies(deps: PollDeps, getToken: GetToken): Promise<void> 
       internetMessageId: { not: null },
       closedAt: null,
       createdAt: { gte: new Date(deps.now().getTime() - MATCH_WINDOW_MS) },
+      org: { suspendedAt: null },
     },
     select: { id: true, mailboxId: true, internetMessageId: true, createdAt: true },
   }));
@@ -96,7 +97,7 @@ type PendingOrder = Pick<Order, "id" | "mailboxId" | "orderNumber" | "deliveryTi
 
 async function extractPending(deps: PollDeps, getToken: GetToken): Promise<void> {
   const pending = (await deps.prisma.order.findMany({
-    where: { replyStatus: "reply_received", closedAt: null },
+    where: { replyStatus: "reply_received", closedAt: null, org: { suspendedAt: null } },
     select: { id: true, mailboxId: true, orderNumber: true, deliveryTime: true, deliveryEarliest: true, deliveryLatest: true },
   }));
   if (pending.length === 0) return;
@@ -188,7 +189,7 @@ type DueOrder = Pick<Order, "id" | "mailboxId" | "emailFurnizor" | "serieSasiu" 
 
 async function requestStatusUpdates(deps: PollDeps, getToken: GetToken): Promise<void> {
   const candidates = (await deps.prisma.order.findMany({
-    where: { deliveryEarliest: { not: null }, statusRequestSentAt: null, closedAt: null },
+    where: { deliveryEarliest: { not: null }, statusRequestSentAt: null, closedAt: null, org: { suspendedAt: null } },
     select: { id: true, mailboxId: true, emailFurnizor: true, serieSasiu: true, deliveryEarliest: true },
   }));
 

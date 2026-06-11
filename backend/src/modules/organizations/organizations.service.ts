@@ -40,13 +40,35 @@ export async function createOrganization(input: CreateOrgInput, deps: OrgDeps = 
 export async function listOrganizations(deps: OrgDeps = defaultDeps) {
   const rows = await deps.prisma.organization.findMany({
     orderBy: { createdAt: "desc" },
-    select: { id: true, name: true, createdAt: true, _count: { select: { users: true, mailboxes: true } } },
+    select: {
+      id: true,
+      name: true,
+      createdAt: true,
+      suspendedAt: true,
+      _count: { select: { users: true, mailboxes: true } },
+    },
   });
   return rows.map((o) => ({
     id: o.id,
     name: o.name,
     createdAt: o.createdAt,
+    suspendedAt: o.suspendedAt,
     userCount: o._count.users,
     mailboxCount: o._count.mailboxes,
   }));
+}
+
+export const patchOrgSchema = z.object({ suspended: z.boolean() });
+
+/** Sets/clears suspendedAt. Returns false when the org does not exist. */
+export async function setOrgSuspended(
+  id: string,
+  suspended: boolean,
+  deps: OrgDeps = defaultDeps
+): Promise<boolean> {
+  const { count } = await deps.prisma.organization.updateMany({
+    where: { id },
+    data: { suspendedAt: suspended ? new Date() : null },
+  });
+  return count > 0;
 }

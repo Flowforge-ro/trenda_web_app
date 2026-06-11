@@ -21,7 +21,14 @@ test("loadSessionUser returns null when the session has no userId", async () => 
 test("loadSessionUser returns the user row for a valid session", async () => {
   const row = { id: "U1", email: "a@b.c", name: "A", role: "admin", orgId: "O1" };
   const u = await loadSessionUser(sessionWith("U1"), deps(row));
-  assert.deepEqual(u, row);
+  assert.deepEqual(u, { ...row, orgSuspendedAt: null });
+});
+
+test("loadSessionUser maps the org's suspendedAt onto the user", async () => {
+  const suspendedAt = new Date("2026-06-01T00:00:00Z");
+  const row = { id: "U1", email: "a@b.c", name: "A", role: "member", orgId: "O1", org: { suspendedAt } };
+  const u = await loadSessionUser(sessionWith("U1"), deps(row));
+  assert.equal(u?.orgSuspendedAt, suspendedAt);
 });
 
 test("loadSessionUser returns null when the user no longer exists", async () => {
@@ -46,9 +53,12 @@ function fakeReply() {
 
 const request = (userId?: string) => ({ session: sessionWith(userId) });
 
-const member = { id: "U1", email: "m@b.c", name: "M", role: "member", orgId: "O1" };
-const admin = { id: "U2", email: "a@b.c", name: "A", role: "admin", orgId: "O1" };
-const superadmin = { id: "U3", email: "s@b.c", name: "S", role: "superadmin", orgId: null };
+const member = { id: "U1", email: "m@b.c", name: "M", role: "member", orgId: "O1", orgSuspendedAt: null };
+const admin = { id: "U2", email: "a@b.c", name: "A", role: "admin", orgId: "O1", orgSuspendedAt: null };
+const superadmin = { id: "U3", email: "s@b.c", name: "S", role: "superadmin", orgId: null, orgSuspendedAt: null };
+const SUSPENDED_AT = new Date("2026-06-01T00:00:00Z");
+const suspendedMember = { ...member, org: { suspendedAt: SUSPENDED_AT } };
+const suspendedAdmin = { ...admin, org: { suspendedAt: SUSPENDED_AT } };
 
 test("requireRole sends 401 when there is no session user", async () => {
   const { reply, calls } = fakeReply();
@@ -97,4 +107,20 @@ test("requireRole('superadmin') sends 403 for an admin", async () => {
   const u = await requireRole("superadmin", request("U2"), reply, deps(admin));
   assert.equal(u, null);
   assert.equal(calls.status, 403);
+});
+
+test("requireRole('member') sends 403 'Organization suspended' when the org is suspended", async () => {
+  const { reply, calls } = fakeReply();
+  const u = await requireRole("member", request("U1"), reply, deps(suspendedMember));
+  assert.equal(u, null);
+  assert.equal(calls.status, 403);
+  assert.deepEqual(calls.body, { error: "Organization suspended" });
+});
+
+test("requireRole('admin') sends 403 when the admin's org is suspended", async () => {
+  const { reply, calls } = fakeReply();
+  const u = await requireRole("admin", request("U2"), reply, deps(suspendedAdmin));
+  assert.equal(u, null);
+  assert.equal(calls.status, 403);
+  assert.deepEqual(calls.body, { error: "Organization suspended" });
 });

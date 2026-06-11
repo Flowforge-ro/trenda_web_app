@@ -25,6 +25,9 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     if (!parsed.success) return reply.status(400).send({ error: "Invalid payload" });
     const user = await authenticate(parsed.data.email, parsed.data.password);
     if (!user) return reply.status(401).send({ error: "Invalid credentials" });
+    if (user.orgSuspendedAt && user.role !== "superadmin") {
+      return reply.status(403).send({ error: "Organization suspended" });
+    }
     request.session.set("userId", user.id);
     return mePayload(user);
   });
@@ -34,6 +37,10 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     if (!user) {
       request.session.delete();
       return reply.status(401).send({ error: "Not authenticated" });
+    }
+    if (user.orgSuspendedAt && user.role !== "superadmin") {
+      request.session.delete();
+      return reply.status(403).send({ error: "Organization suspended" });
     }
     return mePayload(user);
   });

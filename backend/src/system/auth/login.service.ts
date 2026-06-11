@@ -20,8 +20,18 @@ export async function authenticate(
   password: string,
   deps: LoginDeps = defaultDeps
 ): Promise<SessionUser | null> {
-  const user = await deps.prisma.user.findUnique({ where: { email } });
+  const user = await deps.prisma.user.findUnique({
+    where: { email },
+    include: { org: { select: { suspendedAt: true } } },
+  });
   const verified = await deps.verifyPassword(user?.passwordHash ?? DUMMY_HASH, password);
   if (!user || !verified) return null;
-  return { id: user.id, email: user.email, name: user.name, role: user.role, orgId: user.orgId };
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    role: user.role,
+    orgId: user.orgId,
+    orgSuspendedAt: user.org?.suspendedAt ?? null,
+  };
 }

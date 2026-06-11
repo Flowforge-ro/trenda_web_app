@@ -39,6 +39,8 @@ function makeDeps(state: State, messages: GraphMessage[], overrides: Partial<Pol
             if (where?.closedAt === null && o.closedAt != null) return false;
             if (where?.statusRequestSentAt === null && o.statusRequestSentAt != null) return false;
             if (where?.deliveryEarliest?.not === null && o.deliveryEarliest == null) return false;
+            // Prisma relation filter: org: { suspendedAt: null }
+            if (where?.org?.suspendedAt === null && o.org?.suspendedAt != null) return false;
             return true;
           }),
         update: async ({ where, data }: any) => {
@@ -82,6 +84,15 @@ test("pollReplies records a matching reply and flips replyStatus", async () => {
   assert.equal(state.replies[0].orderId, "O1");
   assert.deepEqual(state.replyUpdates, [{ id: "O1", replyStatus: "reply_received" }]);
   assert.ok(state.mailboxUpdates.some((u) => u.lastPolledAt instanceof Date));
+});
+
+test("pollReplies skips orders whose org is suspended", async () => {
+  const suspendedOrder = { ...ORDER, org: { suspendedAt: new Date("2026-06-01T09:00:00Z") } };
+  const state: State = { orders: [suspendedOrder], replies: [], replyUpdates: [], mailboxUpdates: [] };
+  await pollReplies(makeDeps(state, [matchingMessage()]));
+  assert.equal(state.replies.length, 0);
+  assert.equal(state.replyUpdates.length, 0);
+  assert.equal(state.mailboxUpdates.length, 0, "suspended org's mailbox must not be polled");
 });
 
 test("pollReplies ignores a non-matching message but still advances the cursor", async () => {

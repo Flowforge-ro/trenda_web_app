@@ -57,8 +57,14 @@ const fakeOrgListRow = {
   id: ORG_ID,
   name: "Existing Org",
   createdAt: new Date("2024-01-01T00:00:00Z"),
+  suspendedAt: null as Date | null,
   _count: { users: 2, mailboxes: 1 },
 };
+
+/** Records the last organization.updateMany call so tests can assert on it. */
+type OrgUpdateCall = { where: { id: string }; data: { suspendedAt: Date | null } };
+let lastOrgUpdate: OrgUpdateCall | null = null;
+const getLastOrgUpdate = (): OrgUpdateCall | null => lastOrgUpdate;
 
 // ---------------------------------------------------------------------------
 // App setup
@@ -95,6 +101,10 @@ before(async () => {
       },
       create: () => Promise.resolve(fakeOrg),
       findMany: () => Promise.resolve([fakeOrgListRow]),
+      updateMany({ where, data }: { where: { id: string }; data: { suspendedAt: Date | null } }) {
+        lastOrgUpdate = { where, data };
+        return Promise.resolve({ count: where.id === ORG_ID ? 1 : 0 });
+      },
     },
     $transaction: async (fn: (tx: unknown) => Promise<unknown>) => {
       const tx = {
@@ -252,5 +262,74 @@ test("GET /organizations as superadmin returns 200 and mapped array", async () =
   assert.equal(body[0].id, fakeOrgListRow.id);
   assert.ok("userCount" in body[0]);
   assert.ok("mailboxCount" in body[0]);
+  assert.ok("suspendedAt" in body[0], "list rows must expose suspendedAt");
   assert.ok(!("_count" in body[0]), "_count must be mapped away");
+});
+
+// ---------------------------------------------------------------------------
+// PATCH /organizations/:id — suspend / reactivate
+// ---------------------------------------------------------------------------
+
+test("PATCH /organizations/:id without session returns 401", async () => {
+  const res = await app.inject({
+    method: "PATCH",
+    url: `/organizations/${ORG_ID}`,
+    payload: { suspended: true },
+  });
+  assert.equal(res.statusCode, 401);
+});
+
+test("PATCH /organizations/:id as admin returns 403", async () => {
+  const res = await app.inject({
+    method: "PATCH",
+    url: `/organizations/${ORG_ID}`,
+    headers: { cookie: adminCookie },
+    payload: { suspended: true },
+  });
+  assert.equal(res.statusCode, 403);
+});
+
+test("PATCH /organizations/:id with invalid payload returns 400", async () => {
+  const res = await app.inject({
+    method: "PATCH",
+    url: `/organizations/${ORG_ID}`,
+    headers: { cookie: superadminCookie },
+    payload: { suspended: "yes" },
+  });
+  assert.equal(res.statusCode, 400);
+});
+
+test("PATCH /organizations/:id with unknown id returns 404", async () => {
+  const res = await app.inject({
+    method: "PATCH",
+    url: "/organizations/no-such-org",
+    headers: { cookie: superadminCookie },
+    payload: { suspended: true },
+  });
+  assert.equal(res.statusCode, 404);
+});
+
+test("PATCH /organizations/:id suspends: sets suspendedAt to a date", async () => {
+  lastOrgUpdate = null;
+  const res = await app.inject({
+    method: "PATCH",
+    url: `/organizations/${ORG_ID}`,
+    headers: { cookie: superadminCookie },
+    payload: { suspended: true },
+  });
+  assert.equal(res.statusCode, 200);
+  assert.equal(getLastOrgUpdate()?.where.id, ORG_ID);
+  assert.ok(getLastOrgUpdate()?.data.suspendedAt instanceof Date);
+});
+
+test("PATCH /organizations/:id reactivates: clears suspendedAt", async () => {
+  lastOrgUpdate = null;
+  const res = await app.inject({
+    method: "PATCH",
+    url: `/organizations/${ORG_ID}`,
+    headers: { cookie: superadminCookie },
+    payload: { suspended: false },
+  });
+  assert.equal(res.statusCode, 200);
+  assert.equal(getLastOrgUpdate()?.data.suspendedAt, null);
 });

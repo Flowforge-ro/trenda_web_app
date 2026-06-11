@@ -19,7 +19,23 @@ function makeDeps(over: Partial<LoginDeps> = {}): LoginDeps {
 
 test("authenticate returns the user (no hash) on correct credentials", async () => {
   const u = await authenticate("a@b.c", "good", makeDeps());
-  assert.deepEqual(u, { id: "U1", email: "a@b.c", name: "A", role: "admin", orgId: "O1" });
+  assert.deepEqual(u, { id: "U1", email: "a@b.c", name: "A", role: "admin", orgId: "O1", orgSuspendedAt: null });
+});
+
+test("authenticate exposes orgSuspendedAt when the user's org is suspended", async () => {
+  const suspendedAt = new Date("2026-06-01T00:00:00Z");
+  const deps = makeDeps({
+    prisma: {
+      user: {
+        findUnique: async () => ({
+          id: "U1", email: "a@b.c", name: "A", role: "admin", orgId: "O1", passwordHash: "H",
+          org: { suspendedAt },
+        }),
+      },
+    } as any,
+  });
+  const u = await authenticate("a@b.c", "good", deps);
+  assert.equal(u?.orgSuspendedAt, suspendedAt);
 });
 
 test("authenticate returns null on a wrong password", async () => {
