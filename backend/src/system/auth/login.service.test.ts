@@ -29,3 +29,21 @@ test("authenticate returns null on a wrong password", async () => {
 test("authenticate returns null for an unknown email", async () => {
   assert.equal(await authenticate("nobody@b.c", "good", makeDeps()), null);
 });
+
+test("authenticate verifies against a dummy hash for an unknown email (timing-safe)", async () => {
+  let calls = 0;
+  const deps = makeDeps({
+    verifyPassword: async (hash: string) => {
+      calls++;
+      assert.notEqual(hash, "H"); // must not be a real user's hash
+      return false;
+    },
+  });
+  assert.equal(await authenticate("nobody@b.c", "good", deps), null);
+  assert.equal(calls, 1);
+});
+
+test("authenticate returns null for an unknown email even if verify passes", async () => {
+  const deps = makeDeps({ verifyPassword: async () => true });
+  assert.equal(await authenticate("nobody@b.c", "anything", deps), null);
+});

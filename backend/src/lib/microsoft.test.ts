@@ -115,6 +115,41 @@ test("listMessagesSince requests the filter window and returns parsed messages",
   assert.equal(prefer, 'outlook.body-content-type="text"');
 });
 
+test("listMessagesSince orders ascending and follows @odata.nextLink pages", async () => {
+  const urls: string[] = [];
+  const msg = (id: string) => ({ id, receivedDateTime: "2026-06-01T10:00:00Z" });
+  mock.method(globalThis, "fetch", async (url: string) => {
+    urls.push(url);
+    if (urls.length === 1) {
+      return new Response(
+        JSON.stringify({ value: [msg("A")], "@odata.nextLink": "https://graph.microsoft.com/v1.0/next-page" }),
+        { status: 200 }
+      );
+    }
+    return new Response(JSON.stringify({ value: [msg("B")] }), { status: 200 });
+  });
+
+  const msgs = await listMessagesSince("AT", "2026-06-01T09:00:00Z");
+
+  assert.deepEqual(msgs.map((m) => m.id), ["A", "B"]);
+  assert.ok(urls[0].includes(encodeURIComponent("receivedDateTime asc")), `url was ${urls[0]}`);
+  assert.equal(urls[1], "https://graph.microsoft.com/v1.0/next-page");
+});
+
+test("listMessagesSince stops following nextLink after 5 pages", async () => {
+  let calls = 0;
+  mock.method(globalThis, "fetch", async () => {
+    calls++;
+    return new Response(
+      JSON.stringify({ value: [{ id: `M${calls}`, receivedDateTime: "2026-06-01T10:00:00Z" }], "@odata.nextLink": "https://graph.microsoft.com/v1.0/next" }),
+      { status: 200 }
+    );
+  });
+  const msgs = await listMessagesSince("AT", "2026-06-01T09:00:00Z");
+  assert.equal(calls, 5);
+  assert.equal(msgs.length, 5);
+});
+
 test("listMessagesSince throws on HTTP error", async () => {
   mock.method(globalThis, "fetch", async () => new Response("nope", { status: 401 }));
   await assert.rejects(() => listMessagesSince("AT", "2026-06-01T09:00:00Z"), /list messages failed/i);

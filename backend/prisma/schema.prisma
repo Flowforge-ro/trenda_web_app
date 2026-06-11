@@ -71,6 +71,10 @@ model Order {
   createdAt           DateTime     @default(now())
   updatedAt           DateTime     @updatedAt
   replies             OrderReply[]
+
+  // Migration pending — added on a machine without Postgres; run `prisma migrate dev` before deploy.
+  @@index([orgId, createdAt, id]) // listOrders cursor pagination
+  @@index([replyStatus]) // poll extract phase
 }
 
 model OrderReply {
@@ -85,6 +89,9 @@ model OrderReply {
   hasAttachments    Boolean  @default(false)
   body              String?
   createdAt         DateTime @default(now())
+
+  // Migration pending — see note on Order.
+  @@index([orderId, receivedDateTime]) // per-order reply lookups + sort
 }
 
 model Log {

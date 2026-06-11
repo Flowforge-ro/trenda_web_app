@@ -26,7 +26,11 @@ export function encrypt(plaintext: string): string {
 }
 
 export function decrypt(token: string): string {
-  const [ivB64, encB64, tagB64] = token.split(".");
+  const parts = token.split(".");
+  if (parts.length !== 3 || parts.some((p) => p.length === 0)) {
+    throw new Error("Malformed encrypted token: expected iv.ciphertext.tag");
+  }
+  const [ivB64, encB64, tagB64] = parts;
   const iv = Buffer.from(ivB64, "base64");
   const encrypted = Buffer.from(encB64, "base64");
   const tag = Buffer.from(tagB64, "base64");

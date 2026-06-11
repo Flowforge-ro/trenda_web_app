@@ -1,13 +1,12 @@
 import type { FastifyPluginAsync } from "fastify";
-import { loadSessionUser } from "../../lib/auth-context.js";
+import { requireRole } from "../../lib/auth-context.js";
 import { createOrganization, listOrganizations, createOrgSchema } from "./organizations.service.js";
 
 export const organizationsRoutes: FastifyPluginAsync = async (app) => {
   app.addHook("preHandler", async (request, reply) => {
     if (!request.url.startsWith("/organizations")) return;
-    const user = await loadSessionUser(request.session);
-    if (!user) return reply.status(401).send({ error: "Not authenticated" });
-    if (user.role !== "superadmin") return reply.status(403).send({ error: "Forbidden" });
+    const user = await requireRole("superadmin", request, reply);
+    if (!user) return reply;
   });
 
   app.post("/organizations", async (request, reply) => {

@@ -19,7 +19,11 @@ export const logsRoutes: FastifyPluginAsync = async (app) => {
   // Anonymous posts are allowed (so errors on the login page are still captured);
   // when a session exists we attach the user. `source` is always forced to
   // "frontend" — clients can't claim a backend origin.
-  app.post("/logs", async (request, reply) => {
+  // Per-IP rate limit: every request writes to Postgres, and the route is open to
+  // anonymous clients — without a cap one client can fill the Log table.
+  const logsRateLimit = { config: { rateLimit: { max: 30, timeWindow: "1 minute" } } };
+
+  app.post("/logs", logsRateLimit, async (request, reply) => {
     const parsed = bodySchema.safeParse(request.body);
     if (!parsed.success) return reply.status(400).send({ error: "Invalid payload" });
 
