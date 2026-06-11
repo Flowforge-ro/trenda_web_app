@@ -2,7 +2,7 @@
 
 Audited 2026-06-11 on `feat/password-auth-orgs`. Ordered by priority.
 
-**Status 2026-06-11 (evening):** all items fixed except #13, which is deferred — there is no password-change feature yet, so session-revocation machinery would be dead code; revisit when one is added. #8 indexes are in schema.prisma but the migration is still pending (dev DB migration history diverged from the repo; schema changes currently applied via `db push`).
+**Status 2026-06-11 (night):** all 15 items fixed. #8 indexes (plus `suspendedAt`, `sessionVersion`) are in schema.prisma but the migration is still pending (dev DB migration history diverged from the repo; schema changes currently applied via `db push`).
 
 ## High priority
 
@@ -59,9 +59,9 @@ Graph reports 20 untested hotspots; the biggest are `ordersRoutes` (degree 59), 
 ### 12. ✅ FIXED — Unnecessary Prisma result casts
 `poll.service.ts:55,85,171` — `as MatchableOrder[]` etc. on `findMany` results with `select`. Prisma already infers these shapes; the casts can mask schema drift. Remove them.
 
-### 13. DEFERRED — Stateless sessions can't be revoked
+### 13. ✅ FIXED — Stateless sessions can't be revoked
 `@fastify/secure-session` is cookie-stateful only. `loadSessionUser` re-fetches the user (so deletion logs people out), but a password change does not invalidate existing sessions. If this matters, store a `sessionVersion`/`passwordChangedAt` on `User` and reject older sessions.
-**Deferred 2026-06-11:** no password-change endpoint exists anywhere in the app, so there is nothing that would ever bump `sessionVersion` — implement together with the first password-change feature. (Org suspension already kills sessions immediately via the `requireRole` org check.)
+**Fixed 2026-06-11:** `User.sessionVersion` + session `sv` check in `loadSessionUser`; bumped by the new `POST /auth/change-password` (self-service, keeps own session) and `PATCH /users/:id/password` (admin reset, org-scoped, revokes all target sessions).
 
 ### 14. ✅ FIXED — Log table retention
 `Log` rows accumulate forever (frontend + backend errors + 5xx persists). Add a periodic delete of rows older than N days (could ride the existing poll worker).

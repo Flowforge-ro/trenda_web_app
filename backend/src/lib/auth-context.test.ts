@@ -10,8 +10,8 @@ function deps(user: unknown): AuthDeps {
   };
 }
 
-const sessionWith = (userId?: string) =>
-  ({ get: (k: string) => (k === "userId" ? userId : undefined) }) as any;
+const sessionWith = (userId?: string, sv?: number) =>
+  ({ get: (k: string) => (k === "userId" ? userId : k === "sv" ? sv : undefined) }) as any;
 
 test("loadSessionUser returns null when the session has no userId", async () => {
   const u = await loadSessionUser(sessionWith(undefined), deps(null));
@@ -21,7 +21,21 @@ test("loadSessionUser returns null when the session has no userId", async () => 
 test("loadSessionUser returns the user row for a valid session", async () => {
   const row = { id: "U1", email: "a@b.c", name: "A", role: "admin", orgId: "O1" };
   const u = await loadSessionUser(sessionWith("U1"), deps(row));
-  assert.deepEqual(u, { ...row, orgSuspendedAt: null });
+  assert.deepEqual(u, { ...row, orgSuspendedAt: null, sessionVersion: 0 });
+});
+
+test("loadSessionUser rejects a session older than the user's sessionVersion", async () => {
+  const row = { id: "U1", email: "a@b.c", name: "A", role: "member", orgId: "O1", sessionVersion: 2 };
+  // legacy session (no sv) counts as version 0
+  assert.equal(await loadSessionUser(sessionWith("U1"), deps(row)), null);
+  // stale explicit version
+  assert.equal(await loadSessionUser(sessionWith("U1", 1), deps(row)), null);
+});
+
+test("loadSessionUser accepts a session matching the user's sessionVersion", async () => {
+  const row = { id: "U1", email: "a@b.c", name: "A", role: "member", orgId: "O1", sessionVersion: 2 };
+  const u = await loadSessionUser(sessionWith("U1", 2), deps(row));
+  assert.equal(u?.sessionVersion, 2);
 });
 
 test("loadSessionUser maps the org's suspendedAt onto the user", async () => {
@@ -53,9 +67,9 @@ function fakeReply() {
 
 const request = (userId?: string) => ({ session: sessionWith(userId) });
 
-const member = { id: "U1", email: "m@b.c", name: "M", role: "member", orgId: "O1", orgSuspendedAt: null };
-const admin = { id: "U2", email: "a@b.c", name: "A", role: "admin", orgId: "O1", orgSuspendedAt: null };
-const superadmin = { id: "U3", email: "s@b.c", name: "S", role: "superadmin", orgId: null, orgSuspendedAt: null };
+const member = { id: "U1", email: "m@b.c", name: "M", role: "member", orgId: "O1", orgSuspendedAt: null, sessionVersion: 0 };
+const admin = { id: "U2", email: "a@b.c", name: "A", role: "admin", orgId: "O1", orgSuspendedAt: null, sessionVersion: 0 };
+const superadmin = { id: "U3", email: "s@b.c", name: "S", role: "superadmin", orgId: null, orgSuspendedAt: null, sessionVersion: 0 };
 const SUSPENDED_AT = new Date("2026-06-01T00:00:00Z");
 const suspendedMember = { ...member, org: { suspendedAt: SUSPENDED_AT } };
 const suspendedAdmin = { ...admin, org: { suspendedAt: SUSPENDED_AT } };

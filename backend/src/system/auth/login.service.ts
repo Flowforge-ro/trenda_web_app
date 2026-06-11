@@ -1,5 +1,5 @@
 import { prisma } from "../../prisma.js";
-import { verifyPassword } from "../../lib/password.js";
+import { verifyPassword, hashPassword } from "../../lib/password.js";
 import type { SessionUser } from "../../lib/auth-context.js";
 
 export interface LoginDeps {
@@ -33,5 +33,37 @@ export async function authenticate(
     role: user.role,
     orgId: user.orgId,
     orgSuspendedAt: user.org?.suspendedAt ?? null,
+    sessionVersion: user.sessionVersion ?? 0,
   };
+}
+
+export interface ChangePasswordDeps {
+  prisma: typeof prisma;
+  verifyPassword: typeof verifyPassword;
+  hashPassword: typeof hashPassword;
+}
+
+const defaultChangeDeps: ChangePasswordDeps = { prisma, verifyPassword, hashPassword };
+
+/**
+ * Verifies the current password, stores a new hash and bumps sessionVersion
+ * (revoking every other session). Returns the new version so the caller can
+ * refresh its own session cookie.
+ */
+export async function changePassword(
+  userId: string,
+  currentPassword: string,
+  newPassword: string,
+  deps: ChangePasswordDeps = defaultChangeDeps
+): Promise<{ sessionVersion: number } | { error: "invalid_password" }> {
+  const user = await deps.prisma.user.findUnique({ where: { id: userId } });
+  const verified = await deps.verifyPassword(user?.passwordHash ?? DUMMY_HASH, currentPassword);
+  if (!user || !verified) return { error: "invalid_password" };
+  const passwordHash = await deps.hashPassword(newPassword);
+  const updated = await deps.prisma.user.update({
+    where: { id: userId },
+    data: { passwordHash, sessionVersion: { increment: 1 } },
+    select: { sessionVersion: true },
+  });
+  return { sessionVersion: updated.sessionVersion };
 }

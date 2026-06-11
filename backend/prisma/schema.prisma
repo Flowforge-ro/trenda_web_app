@@ -25,6 +25,8 @@ model User {
   org          Organization? @relation(fields: [orgId], references: [id])
   email        String        @unique
   passwordHash String
+  // Bumped on password change; sessions carrying an older "sv" are rejected.
+  sessionVersion Int         @default(0)
   role         String        @default("member")
   name         String?
   createdAt    DateTime      @default(now())

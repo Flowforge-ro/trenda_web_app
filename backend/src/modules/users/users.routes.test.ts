@@ -47,6 +47,14 @@ const newUserRow = {
 
 const EXISTING_EMAIL = "exists@example.com";
 
+/** Records the last user.updateMany call so tests can assert on it. */
+type UserUpdateCall = {
+  where: { id: string; orgId: string };
+  data: { passwordHash: string; sessionVersion: { increment: number } };
+};
+let lastUserUpdate: UserUpdateCall | null = null;
+const getLastUserUpdate = (): UserUpdateCall | null => lastUserUpdate;
+
 // ---------------------------------------------------------------------------
 // App setup
 // ---------------------------------------------------------------------------
@@ -75,6 +83,11 @@ before(async () => {
         return Promise.resolve(null);
       },
       create: () => Promise.resolve(newUserRow),
+      updateMany({ where, data }: UserUpdateCall) {
+        lastUserUpdate = { where, data };
+        const found = where.id === memberUser.id && where.orgId === ORG_ID;
+        return Promise.resolve({ count: found ? 1 : 0 });
+      },
       findMany: () =>
         Promise.resolve([
           { id: adminUser.id, email: adminUser.email, name: adminUser.name, role: adminUser.role, createdAt: new Date() },
@@ -231,4 +244,63 @@ test("GET /users as admin returns 200 and array", async () => {
   assert.ok(Array.isArray(body));
   assert.equal(body.length, 2);
   assert.ok(!body.some((u: Record<string, unknown>) => "passwordHash" in u), "no passwordHash in list");
+});
+
+// ---------------------------------------------------------------------------
+// PATCH /users/:id/password — admin reset
+// ---------------------------------------------------------------------------
+
+test("PATCH /users/:id/password without session returns 401", async () => {
+  const res = await app.inject({
+    method: "PATCH",
+    url: `/users/${memberUser.id}/password`,
+    payload: { password: "newpassword1" },
+  });
+  assert.equal(res.statusCode, 401);
+});
+
+test("PATCH /users/:id/password as member returns 403", async () => {
+  const res = await app.inject({
+    method: "PATCH",
+    url: `/users/${memberUser.id}/password`,
+    headers: { cookie: memberCookie },
+    payload: { password: "newpassword1" },
+  });
+  assert.equal(res.statusCode, 403);
+});
+
+test("PATCH /users/:id/password with a short password returns 400", async () => {
+  const res = await app.inject({
+    method: "PATCH",
+    url: `/users/${memberUser.id}/password`,
+    headers: { cookie: adminCookie },
+    payload: { password: "short" },
+  });
+  assert.equal(res.statusCode, 400);
+});
+
+test("PATCH /users/:id/password with an unknown id returns 404", async () => {
+  const res = await app.inject({
+    method: "PATCH",
+    url: "/users/no-such-user/password",
+    headers: { cookie: adminCookie },
+    payload: { password: "newpassword1" },
+  });
+  assert.equal(res.statusCode, 404);
+});
+
+test("PATCH /users/:id/password resets the hash and bumps sessionVersion, org-scoped", async () => {
+  lastUserUpdate = null;
+  const res = await app.inject({
+    method: "PATCH",
+    url: `/users/${memberUser.id}/password`,
+    headers: { cookie: adminCookie },
+    payload: { password: "newpassword1" },
+  });
+  assert.equal(res.statusCode, 200);
+  const call = getLastUserUpdate();
+  assert.equal(call?.where.id, memberUser.id);
+  assert.equal(call?.where.orgId, ORG_ID, "reset must be scoped to the admin's org");
+  assert.ok(call?.data.passwordHash, "a new hash must be written");
+  assert.deepEqual(call?.data.sessionVersion, { increment: 1 });
 });

@@ -6,9 +6,9 @@ import { Label } from "@/components/ui/label";
 import {
   Dialog, DialogClose, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
-import { useAuth } from "@/lib/auth";
+import { useAuth, useChangePassword } from "@/lib/auth";
 import { useMailboxes, useDisconnectMailbox, connectMailboxUrl, type MailboxType } from "@/lib/mailboxes";
-import { useUsers, useCreateUser } from "@/lib/users";
+import { useUsers, useCreateUser, useResetUserPassword, type OrgUser } from "@/lib/users";
 import { logAction } from "@/lib/logger";
 
 function MailboxesSection({ isAdmin }: { isAdmin: boolean }) {
@@ -121,6 +121,50 @@ function AddUserDialog() {
   );
 }
 
+function ResetPasswordDialog({ user }: { user: OrgUser }) {
+  const reset = useResetUserPassword();
+  const [open, setOpen] = useState(false);
+  const [password, setPassword] = useState("");
+
+  function submit(e: FormEvent) {
+    e.preventDefault();
+    reset.mutate(
+      { id: user.id, password },
+      { onSuccess: () => { setPassword(""); setOpen(false); } }
+    );
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger render={<Button variant="outline" size="sm" />}>Resetează parola</DialogTrigger>
+      <DialogContent>
+        <form onSubmit={submit}>
+          <DialogHeader>
+            <DialogTitle>Resetează parola — {user.email}</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-2 py-4">
+            <Label htmlFor={`reset-pw-${user.id}`}>Parolă nouă</Label>
+            <Input
+              id={`reset-pw-${user.id}`}
+              type="password"
+              required
+              minLength={8}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">Utilizatorul va fi deconectat de pe toate dispozitivele.</p>
+          </div>
+          {reset.isError && <p className="text-sm text-error">Resetarea parolei a eșuat.</p>}
+          <DialogFooter>
+            <DialogClose render={<Button type="button" variant="outline" />}>Anulează</DialogClose>
+            <Button type="submit" disabled={reset.isPending}>{reset.isPending ? "Se salvează..." : "Salvează"}</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function UsersSection() {
   const { data: users = [], isLoading } = useUsers(true);
   return (
@@ -139,13 +183,54 @@ function UsersSection() {
                 <p className="text-sm font-medium text-foreground">{u.name ?? u.email}</p>
                 <p className="text-xs text-muted-foreground">{u.email}</p>
               </div>
-              <span className="inline-flex rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
-                {u.role === "admin" ? "Administrator" : "Membru"}
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="inline-flex rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+                  {u.role === "admin" ? "Administrator" : "Membru"}
+                </span>
+                <ResetPasswordDialog user={u} />
+              </div>
             </li>
           ))}
         </ul>
       )}
+    </section>
+  );
+}
+
+function ChangePasswordSection() {
+  const change = useChangePassword();
+  const [form, setForm] = useState({ current: "", next: "" });
+  const [saved, setSaved] = useState(false);
+
+  function submit(e: FormEvent) {
+    e.preventDefault();
+    setSaved(false);
+    change.mutate(
+      { currentPassword: form.current, newPassword: form.next },
+      { onSuccess: () => { setForm({ current: "", next: "" }); setSaved(true); } }
+    );
+  }
+
+  return (
+    <section className="space-y-3">
+      <h2 className="text-lg font-semibold text-foreground">Schimbă parola</h2>
+      <form onSubmit={submit} className="max-w-sm space-y-3 rounded-lg border border-gray-200 p-4">
+        <div className="grid gap-2">
+          <Label htmlFor="pw-current">Parola actuală</Label>
+          <Input id="pw-current" type="password" required value={form.current}
+            onChange={(e) => setForm({ ...form, current: e.target.value })} />
+        </div>
+        <div className="grid gap-2">
+          <Label htmlFor="pw-new">Parola nouă</Label>
+          <Input id="pw-new" type="password" required minLength={8} value={form.next}
+            onChange={(e) => setForm({ ...form, next: e.target.value })} />
+        </div>
+        {change.isError && (
+          <p className="text-sm text-error">{change.error instanceof Error ? change.error.message : "Schimbarea parolei a eșuat"}</p>
+        )}
+        {saved && <p className="text-sm text-success">Parola a fost schimbată.</p>}
+        <Button type="submit" disabled={change.isPending}>{change.isPending ? "Se salvează..." : "Schimbă parola"}</Button>
+      </form>
     </section>
   );
 }
@@ -161,6 +246,7 @@ export function SettingsPage() {
       </header>
       <MailboxesSection isAdmin={isAdmin} />
       {isAdmin && <UsersSection />}
+      <ChangePasswordSection />
     </div>
   );
 }

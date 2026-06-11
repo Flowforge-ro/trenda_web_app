@@ -9,6 +9,7 @@ export interface SessionUser {
   role: string;
   orgId: string | null;
   orgSuspendedAt: Date | null;
+  sessionVersion: number;
 }
 
 export interface AuthDeps {
@@ -31,10 +32,14 @@ export async function loadSessionUser(
       name: true,
       role: true,
       orgId: true,
+      sessionVersion: true,
       org: { select: { suspendedAt: true } },
     },
   });
   if (!user) return null;
+  // A password change bumps sessionVersion; sessions minted before it die here.
+  const sessionVersion = user.sessionVersion ?? 0;
+  if ((session.get("sv") ?? 0) !== sessionVersion) return null;
   return {
     id: user.id,
     email: user.email,
@@ -42,6 +47,7 @@ export async function loadSessionUser(
     role: user.role,
     orgId: user.orgId,
     orgSuspendedAt: user.org?.suspendedAt ?? null,
+    sessionVersion,
   };
 }
 
