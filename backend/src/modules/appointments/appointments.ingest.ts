@@ -139,6 +139,9 @@ async function processMessage(
         conversationId: message.conversationId,
         status: missing.length === 0 ? "complete" : "collecting",
         fields: result.fields,
+        initialMissing: missing.map((f) => f.key),
+        // The ask goes out right below; a failed send leaves this one high.
+        repliesSent: missing.length > 0 ? 1 : 0,
         lastMessageAt: receivedAt,
       },
     });
@@ -160,6 +163,7 @@ async function processMessage(
       fields: merged,
       status: missing.length === 0 ? "complete" : "collecting",
       lastMessageAt: receivedAt,
+      ...(missing.length > 0 && !wasComplete ? { repliesSent: { increment: 1 } } : {}),
     },
   });
 

@@ -319,6 +319,82 @@ test("org without field config: mailbox skipped before any Graph call", async ()
   assert.equal(state.mailboxUpdates.length, 0);
 });
 
+test("new thread stores initialMissing keys and repliesSent=1 when asking", async () => {
+  const state = makeState();
+  await pollClientMailboxes(
+    makeDeps(state, [clientMessage()], {
+      extractAppointment: async () => ({
+        intent: "appointment",
+        fields: { nume: "Ion Pop", telefon: null, dataDorita: null },
+      }),
+    })
+  );
+  assert.deepEqual(state.creates[0].initialMissing, ["telefon", "dataDorita"]);
+  assert.equal(state.creates[0].repliesSent, 1);
+});
+
+test("new complete thread stores empty initialMissing and repliesSent=0", async () => {
+  const state = makeState();
+  await pollClientMailboxes(
+    makeDeps(state, [clientMessage()], {
+      extractAppointment: async () => ({
+        intent: "appointment",
+        fields: { nume: "Ion Pop", telefon: "0722111222", dataDorita: "2026-06-20" },
+      }),
+    })
+  );
+  assert.deepEqual(state.creates[0].initialMissing, []);
+  assert.equal(state.creates[0].repliesSent, 0);
+});
+
+test("follow-up reply that still misses fields increments repliesSent", async () => {
+  const state = makeState({
+    appointments: [
+      {
+        id: "A1",
+        mailboxId: "mb1",
+        conversationId: "conv1",
+        status: "collecting",
+        fields: { nume: "Ion Pop", telefon: null, dataDorita: null },
+        lastMessageAt: new Date("2026-06-11T09:00:00Z"),
+      },
+    ],
+  });
+  await pollClientMailboxes(
+    makeDeps(state, [clientMessage()], {
+      extractAppointment: async () => ({
+        intent: "appointment",
+        fields: { nume: null, telefon: "0722111222", dataDorita: null },
+      }),
+    })
+  );
+  assert.deepEqual(state.updates[0].repliesSent, { increment: 1 });
+});
+
+test("follow-up reply completing the thread does not increment repliesSent", async () => {
+  const state = makeState({
+    appointments: [
+      {
+        id: "A1",
+        mailboxId: "mb1",
+        conversationId: "conv1",
+        status: "collecting",
+        fields: { nume: "Ion Pop", telefon: null, dataDorita: "2026-06-20" },
+        lastMessageAt: new Date("2026-06-11T09:00:00Z"),
+      },
+    ],
+  });
+  await pollClientMailboxes(
+    makeDeps(state, [clientMessage()], {
+      extractAppointment: async () => ({
+        intent: "appointment",
+        fields: { nume: null, telefon: "0722111222", dataDorita: null },
+      }),
+    })
+  );
+  assert.equal(state.updates[0].repliesSent, undefined);
+});
+
 test("error isolation: first mailbox failing does not block the second", async () => {
   const mb2 = { ...MAILBOX, id: "mb2", email: "prog2@firma.ro" };
   const state = makeState({
