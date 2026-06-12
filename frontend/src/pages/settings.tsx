@@ -9,6 +9,7 @@ import {
 import { useAuth } from "@/lib/auth";
 import { useMailboxes, useDisconnectMailbox, connectMailboxUrl, type MailboxType } from "@/lib/mailboxes";
 import { useUsers, useCreateUser } from "@/lib/users";
+import { AppointmentFieldsSection } from "@/components/settings/appointment-fields-section";
 import { logAction } from "@/lib/logger";
 
 function MailboxesSection({ isAdmin }: { isAdmin: boolean }) {
@@ -161,6 +162,7 @@ export function SettingsPage() {
       </header>
       <MailboxesSection isAdmin={isAdmin} />
       {isAdmin && <UsersSection />}
+      {isAdmin && <AppointmentFieldsSection />}
     </div>
   );
 }
