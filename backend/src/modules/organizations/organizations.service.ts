@@ -18,6 +18,13 @@ export interface OrgDeps {
 }
 const defaultDeps: OrgDeps = { prisma, hashPassword };
 
+export const DEFAULT_APPOINTMENT_FIELDS = [
+  { key: "nume", label: "Nume", description: "Numele complet al clientului", required: true, sortOrder: 0 },
+  { key: "telefon", label: "Telefon", description: "Număr de telefon de contact al clientului", required: true, sortOrder: 1 },
+  { key: "serviciu", label: "Serviciu dorit", description: "Serviciul sau operațiunea cerută de client (ex: revizie, ITP, schimb anvelope)", required: true, sortOrder: 2 },
+  { key: "dataDorita", label: "Data dorită", description: "Data la care clientul dorește programarea, format ISO YYYY-MM-DD; rezolvă expresii vagi față de data de azi", required: true, sortOrder: 3 },
+] as const;
+
 export async function createOrganization(input: CreateOrgInput, deps: OrgDeps = defaultDeps) {
   const existing = await deps.prisma.user.findUnique({ where: { email: input.admin.email } });
   if (existing) return { error: "email_taken" as const };
@@ -32,6 +39,9 @@ export async function createOrganization(input: CreateOrgInput, deps: OrgDeps = 
         role: "admin",
         name: input.admin.name ?? null,
       },
+    });
+    await tx.appointmentFieldConfig.createMany({
+      data: DEFAULT_APPOINTMENT_FIELDS.map((f) => ({ ...f, orgId: org.id })),
     });
     return { org, admin };
   });

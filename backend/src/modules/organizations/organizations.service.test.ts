@@ -2,6 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createOrganization, listOrganizations, type OrgDeps } from "./organizations.service.js";
 
+const seededFieldRows: any[] = [];
+
 function makeDeps(over: Partial<OrgDeps> = {}): OrgDeps {
   return {
     prisma: {
@@ -10,6 +12,12 @@ function makeDeps(over: Partial<OrgDeps> = {}): OrgDeps {
         fn({
           organization: { create: async ({ data }: any) => ({ id: "O1", name: data.name }) },
           user: { create: async ({ data }: any) => ({ id: "ADM1", ...data }) },
+          appointmentFieldConfig: {
+            createMany: async ({ data }: any) => {
+              seededFieldRows.push(...data);
+              return { count: data.length };
+            },
+          },
         }),
       organization: {
         findMany: async () => [
@@ -40,6 +48,20 @@ test("createOrganization rejects a duplicate admin email", async () => {
     makeDeps()
   );
   assert.deepEqual(r, { error: "email_taken" });
+});
+
+test("createOrganization seeds default appointment fields", async () => {
+  seededFieldRows.length = 0;
+  await createOrganization(
+    { name: "Acme", admin: { email: "boss@acme.com", password: "pw", name: "Boss" } },
+    makeDeps()
+  );
+  assert.deepEqual(
+    seededFieldRows.map((f) => f.key),
+    ["nume", "telefon", "serviciu", "dataDorita"]
+  );
+  assert.ok(seededFieldRows.every((f) => f.orgId === "O1"));
+  assert.ok(seededFieldRows.every((f) => typeof f.description === "string" && f.description.length > 0));
 });
 
 test("listOrganizations returns counts", async () => {
