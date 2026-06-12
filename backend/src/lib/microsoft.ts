@@ -123,6 +123,7 @@ const graphMessageSchema = z.object({
   hasAttachments: z.boolean().optional(),
   bodyPreview: z.string().optional(),
   body: z.object({ contentType: z.string(), content: z.string() }).optional(),
+  conversationId: z.string().nullable().optional(),
 });
 
 const graphMessagesResponseSchema = z.object({
@@ -139,7 +140,7 @@ export async function listMessagesSince(
   // Build the query manually: URLSearchParams encodes spaces as "+", which Graph's
   // OData $filter parser rejects. encodeURIComponent gives %20 and leaves "$" literal.
   const select =
-    "id,internetMessageId,internetMessageHeaders,from,subject,receivedDateTime,hasAttachments,bodyPreview,body";
+    "id,internetMessageId,internetMessageHeaders,from,subject,receivedDateTime,hasAttachments,bodyPreview,body,conversationId";
   // Ascending order + nextLink paging: callers advance their watermark to the newest
   // message *processed*, so if the page cap truncates a long gap, the unfetched
   // (newer) messages are picked up by the next poll instead of being skipped.
@@ -269,4 +270,23 @@ export async function getAttachmentBytes(
     contentType: att.contentType ?? null,
     bytes: new Uint8Array(Buffer.from(att.contentBytes, "base64")),
   };
+}
+
+/** Reply in-thread. Graph's /reply sends immediately; comment is plain text. */
+export async function replyToMessage(
+  accessToken: string,
+  messageId: string,
+  comment: string
+): Promise<void> {
+  const res = await fetch(
+    `https://graph.microsoft.com/v1.0/me/messages/${encodeURIComponent(messageId)}/reply`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ comment }),
+    }
+  );
+  if (!res.ok) {
+    throw new Error(`Graph reply failed: ${res.status} ${await res.text()}`);
+  }
 }
