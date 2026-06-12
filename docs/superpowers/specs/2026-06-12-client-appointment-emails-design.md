@@ -54,7 +54,7 @@ model Appointment {
 }
 ```
 
-Defaults seeded per org (seed.ts): nume, telefon, serviciu, dataDorita — each with Romanian descriptions. Migration deferred until a DB is available (existing convention).
+Defaults created automatically when an organization is created (organizations.service): nume, telefon, serviciu, dataDorita — each with Romanian descriptions. Migration deferred until a DB is available (existing convention).
 
 ## Flow — customer mailbox poll cycle
 
