@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { useAuth } from "./lib/auth";
 import { LoginPage } from "./pages/login";
 import { OrdersPage } from "./pages/orders";
+import { AppointmentsPage } from "./pages/appointments";
 import { PlaceholderPage } from "./pages/placeholder";
 import { SettingsPage } from "./pages/settings";
 import { AdminOrgsPage } from "./pages/admin-orgs";
@@ -38,6 +39,7 @@ function App() {
             }
           >
             <Route path="/" element={<OrdersPage />} />
+            <Route path="/appointments" element={<AppointmentsPage />} />
             <Route path="/piese" element={<PlaceholderPage title="Piese" />} />
             <Route path="/clienti" element={<PlaceholderPage title="Clienți" />} />
             <Route path="/rapoarte" element={<PlaceholderPage title="Rapoarte" />} />
