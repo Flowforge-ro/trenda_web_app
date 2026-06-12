@@ -5,6 +5,7 @@ import cors from "@fastify/cors";
 import cookie from "@fastify/cookie";
 import secureSession from "@fastify/secure-session";
 import fastifyOauth2 from "@fastify/oauth2";
+import helmet from "@fastify/helmet"
 import rateLimit from "@fastify/rate-limit";
 import { logger } from "./lib/logger.js";
 import { writeLog } from "./lib/db-log.js";
@@ -35,6 +36,9 @@ await app.register(cors, {
   origin: [
     "http://localhost:5173",
     "http://localhost:3000",
+    // Explicit deploy origin; the redirect-URI fallback only covers
+    // setups where the frontend shares the OAuth callback host.
+    process.env.FRONTEND_ORIGIN ?? "",
     process.env.MICROSOFT_REDIRECT_URI?.replace(/\/auth\/microsoft\/callback$/, "") ?? "",
   ].filter(Boolean),
   credentials: true,
@@ -45,6 +49,10 @@ await app.register(cookie);
 // Opt-in only: routes enable it via `config.rateLimit` (currently just login,
 // against credential brute-forcing).
 await app.register(rateLimit, { global: false });
+await app.register(helmet, {
+    contentSecurityPolicy: false
+  }
+);
 
 await app.register(secureSession, {
   key: Buffer.from(process.env.SESSION_SECRET!, "hex"),

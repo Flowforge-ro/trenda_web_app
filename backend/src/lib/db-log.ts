@@ -38,6 +38,21 @@ export async function writeLog(entry: LogEntry): Promise<void> {
   }
 }
 
+export interface PruneDeps {
+  prisma: typeof prisma;
+  now: () => Date;
+}
+
+const defaultPruneDeps: PruneDeps = { prisma, now: () => new Date() };
+
+// Delete log rows older than the retention window so the table stays bounded
+// (it is fed by an anonymous endpoint and every 5xx). Returns rows deleted.
+export async function pruneLogs(retentionDays = 30, deps: PruneDeps = defaultPruneDeps): Promise<number> {
+  const cutoff = new Date(deps.now().getTime() - retentionDays * 24 * 60 * 60 * 1000);
+  const { count } = await deps.prisma.log.deleteMany({ where: { createdAt: { lt: cutoff } } });
+  return count;
+}
+
 // Log a backend error to BOTH stdout (pino) and the DB, including the stack trace.
 export function logError(message: string, err: unknown, context?: Record<string, unknown>): void {
   logger.error({ err, ...context }, message);

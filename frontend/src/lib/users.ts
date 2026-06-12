@@ -47,3 +47,20 @@ export function useCreateUser() {
     },
   });
 }
+
+export async function resetUserPassword({ id, password }: { id: string; password: string }) {
+  const res = await apiFetch(`/users/${id}/password`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ password }),
+  });
+  if (!res.ok) throw new Error("Resetarea parolei a eșuat");
+  return res.json();
+}
+
+export function useResetUserPassword() {
+  return useMutation({
+    mutationFn: resetUserPassword,
+    onSuccess: (_data, vars) => logAction("user.password-reset", { userId: vars.id }),
+  });
+}

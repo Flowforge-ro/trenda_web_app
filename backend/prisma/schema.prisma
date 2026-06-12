@@ -8,10 +8,12 @@ datasource db {
 }
 
 model Organization {
-  id        String   @id @default(cuid())
-  name      String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String    @id @default(cuid())
+  name        String
+  // Migration pending — applied locally via `db push` (migration history diverged); run `prisma migrate dev` before deploy.
+  suspendedAt DateTime? // non-null = suspended: users lose all API access incl. login
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
   users     User[]
   mailboxes Mailbox[]
   orders    Order[]
@@ -23,6 +25,8 @@ model User {
   org          Organization? @relation(fields: [orgId], references: [id])
   email        String        @unique
   passwordHash String
+  // Bumped on password change; sessions carrying an older "sv" are rejected.
+  sessionVersion Int         @default(0)
   role         String        @default("member")
   name         String?
   createdAt    DateTime      @default(now())
@@ -71,6 +75,10 @@ model Order {
   createdAt           DateTime     @default(now())
   updatedAt           DateTime     @updatedAt
   replies             OrderReply[]
+
+  // Migration pending — added on a machine without Postgres; run `prisma migrate dev` before deploy.
+  @@index([orgId, createdAt, id]) // listOrders cursor pagination
+  @@index([replyStatus]) // poll extract phase
 }
 
 model OrderReply {
@@ -85,6 +93,9 @@ model OrderReply {
   hasAttachments    Boolean  @default(false)
   body              String?
   createdAt         DateTime @default(now())
+
+  // Migration pending — see note on Order.
+  @@index([orderId, receivedDateTime]) // per-order reply lookups + sort
 }
 
 model Log {

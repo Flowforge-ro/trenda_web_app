@@ -25,6 +25,27 @@ export async function createUser(orgId: string, input: CreateUserInput, deps: Us
   });
 }
 
+export const resetPasswordSchema = z.object({ password: z.string().min(8) });
+
+/**
+ * Admin password reset, scoped to the admin's org. Bumps sessionVersion so
+ * every session of the target user is revoked. Returns false when the user
+ * does not exist in this org.
+ */
+export async function resetUserPassword(
+  orgId: string,
+  userId: string,
+  password: string,
+  deps: UsersDeps = defaultDeps
+): Promise<boolean> {
+  const passwordHash = await deps.hashPassword(password);
+  const { count } = await deps.prisma.user.updateMany({
+    where: { id: userId, orgId },
+    data: { passwordHash, sessionVersion: { increment: 1 } },
+  });
+  return count > 0;
+}
+
 export async function listUsers(orgId: string, deps: UsersDeps = defaultDeps) {
   return deps.prisma.user.findMany({
     where: { orgId },

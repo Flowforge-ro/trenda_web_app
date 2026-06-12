@@ -43,13 +43,26 @@ function daysUntil(date: Date, now: Date): number {
 
 type MatchableOrder = Pick<Order, "id" | "mailboxId" | "internetMessageId" | "createdAt">;
 
+type GetToken = (mailboxId: string) => Promise<string | null>;
+
 export async function pollReplies(deps: PollDeps = defaultDeps): Promise<void> {
-  await ingestReplies(deps);
-  await extractPending(deps);
-  await requestStatusUpdates(deps);
+  // One token refresh per mailbox per cycle: Microsoft rotates the refresh token
+  // on every grant, so refreshing once per order risks persisting a stale token.
+  const tokens = new Map<string, Promise<string | null>>();
+  const getToken: GetToken = (mailboxId) => {
+    let token = tokens.get(mailboxId);
+    if (!token) {
+      token = getMailboxAccessToken(deps, mailboxId);
+      tokens.set(mailboxId, token);
+    }
+    return token;
+  };
+  await ingestReplies(deps, getToken);
+  await extractPending(deps, getToken);
+  await requestStatusUpdates(deps, getToken);
 }
 
-async function ingestReplies(deps: PollDeps): Promise<void> {
+async function ingestReplies(deps: PollDeps, getToken: GetToken): Promise<void> {
   // No replyStatus filter: a supplier may send a correction after the first
   // reply was already ingested/extracted, and it must re-enter the pipeline.
   const matchable = (await deps.prisma.order.findMany({
@@ -58,9 +71,10 @@ async function ingestReplies(deps: PollDeps): Promise<void> {
       internetMessageId: { not: null },
       closedAt: null,
       createdAt: { gte: new Date(deps.now().getTime() - MATCH_WINDOW_MS) },
+      org: { suspendedAt: null },
     },
     select: { id: true, mailboxId: true, internetMessageId: true, createdAt: true },
-  })) as MatchableOrder[];
+  }));
   if (matchable.length === 0) return;
 
   const byMailbox = new Map<string, MatchableOrder[]>();
@@ -72,7 +86,7 @@ async function ingestReplies(deps: PollDeps): Promise<void> {
 
   for (const [mailboxId, orders] of byMailbox) {
     try {
-      await pollMailbox(mailboxId, orders, deps);
+      await pollMailbox(mailboxId, orders, deps, getToken);
     } catch (err) {
       logError("Poll failed for mailbox", err, { mailboxId });
     }
@@ -81,22 +95,16 @@ async function ingestReplies(deps: PollDeps): Promise<void> {
 
 type PendingOrder = Pick<Order, "id" | "mailboxId" | "orderNumber" | "deliveryTime" | "deliveryEarliest" | "deliveryLatest">;
 
-async function extractPending(deps: PollDeps): Promise<void> {
+async function extractPending(deps: PollDeps, getToken: GetToken): Promise<void> {
   const pending = (await deps.prisma.order.findMany({
-    where: { replyStatus: "reply_received", closedAt: null },
+    where: { replyStatus: "reply_received", closedAt: null, org: { suspendedAt: null } },
     select: { id: true, mailboxId: true, orderNumber: true, deliveryTime: true, deliveryEarliest: true, deliveryLatest: true },
-  })) as PendingOrder[];
+  }));
   if (pending.length === 0) return;
 
   for (const order of pending) {
-    let accessToken: string | null = null;
     try {
-      accessToken = await getMailboxAccessToken(deps, order.mailboxId);
-    } catch (err) {
-      logError("Token refresh failed for mailbox", err, { mailboxId: order.mailboxId });
-    }
-    try {
-      await extractForOrder(order, accessToken, deps);
+      await extractForOrder(order, getToken, deps);
     } catch (err) {
       // A hard failure leaves the order at "reply_received" so the next poll retries it.
       logError("Extraction failed for order", err, { orderId: order.id });
@@ -114,7 +122,7 @@ function supportedMime(att: { name: string; contentType: string | null }): strin
   return null;
 }
 
-async function extractForOrder(order: PendingOrder, accessToken: string | null, deps: PollDeps): Promise<void> {
+async function extractForOrder(order: PendingOrder, getToken: GetToken, deps: PollDeps): Promise<void> {
   const reply = await deps.prisma.orderReply.findFirst({
     where: { orderId: order.id },
     orderBy: { receivedDateTime: "desc" },
@@ -125,6 +133,18 @@ async function extractForOrder(order: PendingOrder, accessToken: string | null, 
   let result: ExtractionResult = reply?.body
     ? await deps.extractOrderInfo({ kind: "text", body: reply.body }, today)
     : { orderNumber: null, deliveryTime: null, deliveryEarliest: null, deliveryLatest: null, status: "needs_review" };
+
+  // The token is only needed for attachment fallback; fetch it lazily so a
+  // text-only extraction never costs a refresh, and a failed refresh still
+  // lets the text extraction result land.
+  let accessToken: string | null = null;
+  if (result.status !== "extracted" && reply?.hasAttachments && reply.graphMessageId) {
+    try {
+      accessToken = await getToken(order.mailboxId);
+    } catch (err) {
+      logError("Token refresh failed for mailbox", err, { mailboxId: order.mailboxId });
+    }
+  }
 
   if (result.status !== "extracted" && reply?.hasAttachments && accessToken && reply.graphMessageId) {
     const atts = await deps.listFileAttachments(accessToken, reply.graphMessageId);
@@ -167,11 +187,11 @@ async function extractForOrder(order: PendingOrder, accessToken: string | null, 
 
 type DueOrder = Pick<Order, "id" | "mailboxId" | "emailFurnizor" | "serieSasiu" | "deliveryEarliest">;
 
-async function requestStatusUpdates(deps: PollDeps): Promise<void> {
+async function requestStatusUpdates(deps: PollDeps, getToken: GetToken): Promise<void> {
   const candidates = (await deps.prisma.order.findMany({
-    where: { deliveryEarliest: { not: null }, statusRequestSentAt: null, closedAt: null },
+    where: { deliveryEarliest: { not: null }, statusRequestSentAt: null, closedAt: null, org: { suspendedAt: null } },
     select: { id: true, mailboxId: true, emailFurnizor: true, serieSasiu: true, deliveryEarliest: true },
-  })) as DueOrder[];
+  }));
 
   const now = deps.now();
   const due = candidates.filter((o) => o.deliveryEarliest !== null && daysUntil(o.deliveryEarliest, now) <= 1);
@@ -179,7 +199,7 @@ async function requestStatusUpdates(deps: PollDeps): Promise<void> {
 
   for (const order of due) {
     try {
-      const accessToken = await getMailboxAccessToken(deps, order.mailboxId);
+      const accessToken = await getToken(order.mailboxId);
       if (!accessToken) continue;
       await deps.createAndSendMail(accessToken, {
         to: order.emailFurnizor,
@@ -194,8 +214,8 @@ async function requestStatusUpdates(deps: PollDeps): Promise<void> {
   }
 }
 
-async function pollMailbox(mailboxId: string, orders: MatchableOrder[], deps: PollDeps): Promise<void> {
-  const accessToken = await getMailboxAccessToken(deps, mailboxId);
+async function pollMailbox(mailboxId: string, orders: MatchableOrder[], deps: PollDeps, getToken: GetToken): Promise<void> {
+  const accessToken = await getToken(mailboxId);
   if (!accessToken) return;
 
   const mailbox = await deps.prisma.mailbox.findUnique({
@@ -238,5 +258,12 @@ async function pollMailbox(mailboxId: string, orders: MatchableOrder[], deps: Po
     ]);
   }
 
-  await deps.prisma.mailbox.update({ where: { id: mailboxId }, data: { lastPolledAt: deps.now() } });
+  // Watermark from Graph's own timestamps: immune to server/Graph clock skew, and
+  // correct under page-cap truncation (messages arrive oldest-first, so anything
+  // not fetched is newer than the watermark and re-queried next poll).
+  const newest = messages.reduce<Date | null>((max, m) => {
+    const d = new Date(m.receivedDateTime);
+    return !max || d > max ? d : max;
+  }, null);
+  await deps.prisma.mailbox.update({ where: { id: mailboxId }, data: { lastPolledAt: newest ?? deps.now() } });
 }

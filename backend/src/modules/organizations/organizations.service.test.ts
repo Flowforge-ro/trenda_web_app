@@ -13,7 +13,7 @@ function makeDeps(over: Partial<OrgDeps> = {}): OrgDeps {
         }),
       organization: {
         findMany: async () => [
-          { id: "O1", name: "Acme", createdAt: new Date("2026-06-01T00:00:00Z"), _count: { users: 2, mailboxes: 1 } },
+          { id: "O1", name: "Acme", createdAt: new Date("2026-06-01T00:00:00Z"), suspendedAt: null, _count: { users: 2, mailboxes: 1 } },
         ],
       },
     } as any,
@@ -44,5 +44,5 @@ test("createOrganization rejects a duplicate admin email", async () => {
 
 test("listOrganizations returns counts", async () => {
   const r = await listOrganizations(makeDeps());
-  assert.deepEqual(r, [{ id: "O1", name: "Acme", createdAt: new Date("2026-06-01T00:00:00Z"), userCount: 2, mailboxCount: 1 }]);
+  assert.deepEqual(r, [{ id: "O1", name: "Acme", createdAt: new Date("2026-06-01T00:00:00Z"), suspendedAt: null, userCount: 2, mailboxCount: 1 }]);
 });

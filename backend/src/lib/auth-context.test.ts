@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { loadSessionUser, type AuthDeps } from "./auth-context.js";
+import { loadSessionUser, requireRole, type AuthDeps } from "./auth-context.js";
 
 function deps(user: unknown): AuthDeps {
   return {
@@ -10,8 +10,8 @@ function deps(user: unknown): AuthDeps {
   };
 }
 
-const sessionWith = (userId?: string) =>
-  ({ get: (k: string) => (k === "userId" ? userId : undefined) }) as any;
+const sessionWith = (userId?: string, sv?: number) =>
+  ({ get: (k: string) => (k === "userId" ? userId : k === "sv" ? sv : undefined) }) as any;
 
 test("loadSessionUser returns null when the session has no userId", async () => {
   const u = await loadSessionUser(sessionWith(undefined), deps(null));
@@ -21,10 +21,120 @@ test("loadSessionUser returns null when the session has no userId", async () => 
 test("loadSessionUser returns the user row for a valid session", async () => {
   const row = { id: "U1", email: "a@b.c", name: "A", role: "admin", orgId: "O1" };
   const u = await loadSessionUser(sessionWith("U1"), deps(row));
-  assert.deepEqual(u, row);
+  assert.deepEqual(u, { ...row, orgSuspendedAt: null, sessionVersion: 0 });
+});
+
+test("loadSessionUser rejects a session older than the user's sessionVersion", async () => {
+  const row = { id: "U1", email: "a@b.c", name: "A", role: "member", orgId: "O1", sessionVersion: 2 };
+  // legacy session (no sv) counts as version 0
+  assert.equal(await loadSessionUser(sessionWith("U1"), deps(row)), null);
+  // stale explicit version
+  assert.equal(await loadSessionUser(sessionWith("U1", 1), deps(row)), null);
+});
+
+test("loadSessionUser accepts a session matching the user's sessionVersion", async () => {
+  const row = { id: "U1", email: "a@b.c", name: "A", role: "member", orgId: "O1", sessionVersion: 2 };
+  const u = await loadSessionUser(sessionWith("U1", 2), deps(row));
+  assert.equal(u?.sessionVersion, 2);
+});
+
+test("loadSessionUser maps the org's suspendedAt onto the user", async () => {
+  const suspendedAt = new Date("2026-06-01T00:00:00Z");
+  const row = { id: "U1", email: "a@b.c", name: "A", role: "member", orgId: "O1", org: { suspendedAt } };
+  const u = await loadSessionUser(sessionWith("U1"), deps(row));
+  assert.equal(u?.orgSuspendedAt, suspendedAt);
 });
 
 test("loadSessionUser returns null when the user no longer exists", async () => {
   const u = await loadSessionUser(sessionWith("U1"), deps(null));
   assert.equal(u, null);
+});
+
+function fakeReply() {
+  const calls: { status?: number; body?: unknown } = {};
+  const reply = {
+    status(code: number) {
+      calls.status = code;
+      return reply;
+    },
+    send(body: unknown) {
+      calls.body = body;
+      return reply;
+    },
+  };
+  return { reply: reply as any, calls };
+}
+
+const request = (userId?: string) => ({ session: sessionWith(userId) });
+
+const member = { id: "U1", email: "m@b.c", name: "M", role: "member", orgId: "O1", orgSuspendedAt: null, sessionVersion: 0 };
+const admin = { id: "U2", email: "a@b.c", name: "A", role: "admin", orgId: "O1", orgSuspendedAt: null, sessionVersion: 0 };
+const superadmin = { id: "U3", email: "s@b.c", name: "S", role: "superadmin", orgId: null, orgSuspendedAt: null, sessionVersion: 0 };
+const SUSPENDED_AT = new Date("2026-06-01T00:00:00Z");
+const suspendedMember = { ...member, org: { suspendedAt: SUSPENDED_AT } };
+const suspendedAdmin = { ...admin, org: { suspendedAt: SUSPENDED_AT } };
+
+test("requireRole sends 401 when there is no session user", async () => {
+  const { reply, calls } = fakeReply();
+  const u = await requireRole("member", request(undefined), reply, deps(null));
+  assert.equal(u, null);
+  assert.equal(calls.status, 401);
+});
+
+test("requireRole('member') returns any org-scoped user", async () => {
+  const { reply, calls } = fakeReply();
+  const u = await requireRole("member", request("U1"), reply, deps(member));
+  assert.deepEqual(u, member);
+  assert.equal(calls.status, undefined);
+});
+
+test("requireRole('member') sends 403 when the user has no org", async () => {
+  const { reply, calls } = fakeReply();
+  const u = await requireRole("member", request("U3"), reply, deps(superadmin));
+  assert.equal(u, null);
+  assert.equal(calls.status, 403);
+});
+
+test("requireRole('admin') returns an org admin", async () => {
+  const { reply, calls } = fakeReply();
+  const u = await requireRole("admin", request("U2"), reply, deps(admin));
+  assert.deepEqual(u, admin);
+  assert.equal(calls.status, undefined);
+});
+
+test("requireRole('admin') sends 403 for a plain member", async () => {
+  const { reply, calls } = fakeReply();
+  const u = await requireRole("admin", request("U1"), reply, deps(member));
+  assert.equal(u, null);
+  assert.equal(calls.status, 403);
+});
+
+test("requireRole('superadmin') returns a superadmin without requiring an org", async () => {
+  const { reply, calls } = fakeReply();
+  const u = await requireRole("superadmin", request("U3"), reply, deps(superadmin));
+  assert.deepEqual(u, superadmin);
+  assert.equal(calls.status, undefined);
+});
+
+test("requireRole('superadmin') sends 403 for an admin", async () => {
+  const { reply, calls } = fakeReply();
+  const u = await requireRole("superadmin", request("U2"), reply, deps(admin));
+  assert.equal(u, null);
+  assert.equal(calls.status, 403);
+});
+
+test("requireRole('member') sends 403 'Organization suspended' when the org is suspended", async () => {
+  const { reply, calls } = fakeReply();
+  const u = await requireRole("member", request("U1"), reply, deps(suspendedMember));
+  assert.equal(u, null);
+  assert.equal(calls.status, 403);
+  assert.deepEqual(calls.body, { error: "Organization suspended" });
+});
+
+test("requireRole('admin') sends 403 when the admin's org is suspended", async () => {
+  const { reply, calls } = fakeReply();
+  const u = await requireRole("admin", request("U2"), reply, deps(suspendedAdmin));
+  assert.equal(u, null);
+  assert.equal(calls.status, 403);
+  assert.deepEqual(calls.body, { error: "Organization suspended" });
 });

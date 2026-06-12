@@ -34,10 +34,13 @@ function makeDeps(state: State, messages: GraphMessage[], overrides: Partial<Pol
         findMany: async ({ where }: any) =>
           state.orders.filter((o) => {
             if (where?.replyStatus && o.replyStatus !== where.replyStatus) return false;
+            if (where?.internetMessageId?.not === null && o.internetMessageId == null) return false;
             if (where?.createdAt?.gte && o.createdAt < where.createdAt.gte) return false;
             if (where?.closedAt === null && o.closedAt != null) return false;
             if (where?.statusRequestSentAt === null && o.statusRequestSentAt != null) return false;
             if (where?.deliveryEarliest?.not === null && o.deliveryEarliest == null) return false;
+            // Prisma relation filter: org: { suspendedAt: null }
+            if (where?.org?.suspendedAt === null && o.org?.suspendedAt != null) return false;
             return true;
           }),
         update: async ({ where, data }: any) => {
@@ -83,6 +86,15 @@ test("pollReplies records a matching reply and flips replyStatus", async () => {
   assert.ok(state.mailboxUpdates.some((u) => u.lastPolledAt instanceof Date));
 });
 
+test("pollReplies skips orders whose org is suspended", async () => {
+  const suspendedOrder = { ...ORDER, org: { suspendedAt: new Date("2026-06-01T09:00:00Z") } };
+  const state: State = { orders: [suspendedOrder], replies: [], replyUpdates: [], mailboxUpdates: [] };
+  await pollReplies(makeDeps(state, [matchingMessage()]));
+  assert.equal(state.replies.length, 0);
+  assert.equal(state.replyUpdates.length, 0);
+  assert.equal(state.mailboxUpdates.length, 0, "suspended org's mailbox must not be polled");
+});
+
 test("pollReplies ignores a non-matching message but still advances the cursor", async () => {
   const state: State = { orders: [ORDER], replies: [], replyUpdates: [], mailboxUpdates: [] };
   const m = matchingMessage();
@@ -90,6 +102,24 @@ test("pollReplies ignores a non-matching message but still advances the cursor",
   await pollReplies(makeDeps(state, [m]));
   assert.equal(state.replies.length, 0);
   assert.ok(state.mailboxUpdates.some((u) => u.lastPolledAt instanceof Date));
+});
+
+test("pollMailbox advances lastPolledAt to the newest message timestamp, not the wall clock", async () => {
+  const state: State = { orders: [ORDER], replies: [], replyUpdates: [], mailboxUpdates: [] };
+  await pollReplies(makeDeps(state, [matchingMessage()]));
+  const update = state.mailboxUpdates.find((u) => u.lastPolledAt instanceof Date);
+  assert.ok(update);
+  // Message timestamps come from Graph's clock; using them as the watermark
+  // removes server/Graph clock-skew loss. now() in this fake is 10:05.
+  assert.equal(update.lastPolledAt.toISOString(), "2026-06-01T10:00:00.000Z");
+});
+
+test("pollMailbox falls back to the wall clock when the window has no messages", async () => {
+  const state: State = { orders: [ORDER], replies: [], replyUpdates: [], mailboxUpdates: [] };
+  await pollReplies(makeDeps(state, []));
+  const update = state.mailboxUpdates.find((u) => u.lastPolledAt instanceof Date);
+  assert.ok(update);
+  assert.equal(update.lastPolledAt.toISOString(), "2026-06-01T10:05:00.000Z");
 });
 
 test("pollReplies does not insert a duplicate reply", async () => {
@@ -261,6 +291,34 @@ test("status phase skips closed orders", async () => {
   const state: State = { orders: [{ ...DUE_ORDER, closedAt: new Date("2026-06-01T09:00:00Z") }], replies: [], replyUpdates: [], mailboxUpdates: [] };
   await pollReplies(makeDeps(state, [], { createAndSendMail: async () => { called = true; return { internetMessageId: "<x>" }; } }));
   assert.equal(called, false);
+});
+
+test("a poll cycle refreshes each mailbox token at most once across all phases", async () => {
+  let refreshes = 0;
+  const pendingWithAttachment = { ...NEEDS_VISION, id: "O5", internetMessageId: "<orig5@us>" };
+  const state: State = {
+    orders: [ORDER, pendingWithAttachment, DUE_ORDER],
+    replies: [{ orderId: "O5", graphMessageId: "M5", body: "body-text", hasAttachments: true }],
+    replyUpdates: [],
+    mailboxUpdates: [],
+  };
+  await pollReplies(makeDeps(state, [matchingMessage()], {
+    getAccessTokenFromRefreshToken: async () => { refreshes++; return { accessToken: "AT" }; },
+    listFileAttachments: async () => [{ name: "doc.pdf", contentType: "application/pdf", bytes: new Uint8Array([1]) }],
+  }));
+  assert.equal(refreshes, 1);
+});
+
+test("extract phase does not refresh a token when the reply has no attachments", async () => {
+  let refreshes = 0;
+  // internetMessageId null keeps the order out of the ingest phase, isolating extract.
+  const pendingTextOnly = { ...PENDING, internetMessageId: null };
+  const state: State = { orders: [pendingTextOnly], replies: [{ orderId: "O2", graphMessageId: "M2", body: "Comanda CMD42" }], replyUpdates: [], mailboxUpdates: [] };
+  await pollReplies(makeDeps(state, [], {
+    getAccessTokenFromRefreshToken: async () => { refreshes++; return { accessToken: "AT" }; },
+  }));
+  assert.equal(refreshes, 0);
+  assert.ok(state.replyUpdates.find((u) => u.id === "O2"), "text-only extraction should still run");
 });
 
 test("extract phase tries PDFs before images", async () => {

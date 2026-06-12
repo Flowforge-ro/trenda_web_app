@@ -125,7 +125,10 @@ const graphMessageSchema = z.object({
   body: z.object({ contentType: z.string(), content: z.string() }).optional(),
 });
 
-const graphMessagesResponseSchema = z.object({ value: z.array(graphMessageSchema) });
+const graphMessagesResponseSchema = z.object({
+  value: z.array(graphMessageSchema),
+  "@odata.nextLink": z.string().optional(),
+});
 
 export type GraphMessage = z.infer<typeof graphMessageSchema>;
 
@@ -137,26 +140,33 @@ export async function listMessagesSince(
   // OData $filter parser rejects. encodeURIComponent gives %20 and leaves "$" literal.
   const select =
     "id,internetMessageId,internetMessageHeaders,from,subject,receivedDateTime,hasAttachments,bodyPreview,body";
-  // $top=50 with no @odata.nextLink paging: a single 5-minute poll window for one
-  // mailbox will not exceed this. Revisit if polling ever spans long gaps.
+  // Ascending order + nextLink paging: callers advance their watermark to the newest
+  // message *processed*, so if the page cap truncates a long gap, the unfetched
+  // (newer) messages are picked up by the next poll instead of being skipped.
   const query =
     `$filter=${encodeURIComponent(`receivedDateTime ge ${sinceIso}`)}` +
-    `&$orderby=${encodeURIComponent("receivedDateTime desc")}` +
+    `&$orderby=${encodeURIComponent("receivedDateTime asc")}` +
     `&$top=50` +
     `&$select=${encodeURIComponent(select)}`;
-  const res = await fetch(
-    `https://graph.microsoft.com/v1.0/me/messages?${query}`,
-    {
+
+  const MAX_PAGES = 5;
+  const messages: GraphMessage[] = [];
+  let url: string | undefined = `https://graph.microsoft.com/v1.0/me/messages?${query}`;
+  for (let page = 0; page < MAX_PAGES && url; page++) {
+    const res: Response = await fetch(url, {
       headers: {
         Authorization: `Bearer ${accessToken}`,
         Prefer: 'outlook.body-content-type="text"',
       },
+    });
+    if (!res.ok) {
+      throw new Error(`Graph list messages failed: ${res.status} ${await res.text()}`);
     }
-  );
-  if (!res.ok) {
-    throw new Error(`Graph list messages failed: ${res.status} ${await res.text()}`);
+    const parsed = graphMessagesResponseSchema.parse(await res.json());
+    messages.push(...parsed.value);
+    url = parsed["@odata.nextLink"];
   }
-  return graphMessagesResponseSchema.parse(await res.json()).value;
+  return messages;
 }
 
 const graphAttachmentSchema = z.object({

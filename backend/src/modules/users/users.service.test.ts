@@ -42,3 +42,35 @@ test("listUsers returns only the org's users without hashes", async () => {
   assert.equal(rows.length, 1);
   assert.equal((rows[0] as any).passwordHash, undefined);
 });
+
+// ---------------------------------------------------------------------------
+// resetUserPassword
+// ---------------------------------------------------------------------------
+
+import { resetUserPassword } from "./users.service.js";
+
+test("resetUserPassword hashes, bumps sessionVersion and scopes to the org", async () => {
+  const calls: any[] = [];
+  const deps = makeDeps({
+    prisma: {
+      user: {
+        updateMany: async (args: any) => {
+          calls.push(args);
+          return { count: 1 };
+        },
+      },
+    } as any,
+  });
+  const ok = await resetUserPassword("O1", "U1", "newpassword", deps);
+  assert.equal(ok, true);
+  assert.deepEqual(calls[0].where, { id: "U1", orgId: "O1" });
+  assert.equal(calls[0].data.passwordHash, "HASH");
+  assert.deepEqual(calls[0].data.sessionVersion, { increment: 1 });
+});
+
+test("resetUserPassword returns false when no row matches", async () => {
+  const deps = makeDeps({
+    prisma: { user: { updateMany: async () => ({ count: 0 }) } } as any,
+  });
+  assert.equal(await resetUserPassword("O1", "stranger", "newpassword", deps), false);
+});

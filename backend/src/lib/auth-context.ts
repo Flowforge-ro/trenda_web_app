@@ -1,4 +1,5 @@
 import type { Session } from "@fastify/secure-session";
+import type { FastifyReply } from "fastify";
 import { prisma } from "../prisma.js";
 
 export interface SessionUser {
@@ -7,6 +8,8 @@ export interface SessionUser {
   name: string | null;
   role: string;
   orgId: string | null;
+  orgSuspendedAt: Date | null;
+  sessionVersion: number;
 }
 
 export interface AuthDeps {
@@ -23,7 +26,77 @@ export async function loadSessionUser(
   if (!userId) return null;
   const user = await deps.prisma.user.findUnique({
     where: { id: userId },
-    select: { id: true, email: true, name: true, role: true, orgId: true },
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      role: true,
+      orgId: true,
+      sessionVersion: true,
+      org: { select: { suspendedAt: true } },
+    },
   });
-  return user ?? null;
+  if (!user) return null;
+  // A password change bumps sessionVersion; sessions minted before it die here.
+  const sessionVersion = user.sessionVersion ?? 0;
+  if ((session.get("sv") ?? 0) !== sessionVersion) return null;
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    role: user.role,
+    orgId: user.orgId,
+    orgSuspendedAt: user.org?.suspendedAt ?? null,
+    sessionVersion,
+  };
+}
+
+/** A session user guaranteed to belong to an organization. */
+export type OrgUser = SessionUser & { orgId: string };
+
+/**
+ * Shared route guard: loads the session user and enforces a role.
+ * Sends 401/403 and returns null on failure — callers do `if (!user) return reply`.
+ * - "member": any authenticated user with an org (admins included)
+ * - "admin": role "admin" with an org
+ * - "superadmin": role "superadmin" (no org required)
+ */
+export async function requireRole(
+  role: "member" | "admin",
+  request: { session: Session },
+  reply: FastifyReply,
+  deps?: AuthDeps
+): Promise<OrgUser | null>;
+export async function requireRole(
+  role: "superadmin",
+  request: { session: Session },
+  reply: FastifyReply,
+  deps?: AuthDeps
+): Promise<SessionUser | null>;
+export async function requireRole(
+  role: "member" | "admin" | "superadmin",
+  request: { session: Session },
+  reply: FastifyReply,
+  deps: AuthDeps = defaultDeps
+): Promise<SessionUser | null> {
+  const user = await loadSessionUser(request.session, deps);
+  if (!user) {
+    reply.status(401).send({ error: "Not authenticated" });
+    return null;
+  }
+  if (user.orgSuspendedAt && user.role !== "superadmin") {
+    reply.status(403).send({ error: "Organization suspended" });
+    return null;
+  }
+  const allowed =
+    role === "superadmin"
+      ? user.role === "superadmin"
+      : role === "admin"
+        ? user.role === "admin" && user.orgId !== null
+        : user.orgId !== null;
+  if (!allowed) {
+    reply.status(403).send({ error: "Forbidden" });
+    return null;
+  }
+  return user;
 }

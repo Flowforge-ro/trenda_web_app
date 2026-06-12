@@ -6,6 +6,7 @@ export interface Organization {
   id: string;
   name: string;
   createdAt: string;
+  suspendedAt: string | null;
   userCount: number;
   mailboxCount: number;
 }
@@ -42,6 +43,27 @@ export function useCreateOrganization() {
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["organizations"] });
       logAction("organization.create", { orgId: data?.org?.id });
+    },
+  });
+}
+
+export async function setOrganizationSuspended({ id, suspended }: { id: string; suspended: boolean }) {
+  const res = await apiFetch(`/organizations/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ suspended }),
+  });
+  if (!res.ok) throw new Error("Actualizarea organizației a eșuat");
+  return res.json();
+}
+
+export function useSetOrganizationSuspended() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: setOrganizationSuspended,
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ["organizations"] });
+      logAction(vars.suspended ? "organization.suspend" : "organization.unsuspend", { orgId: vars.id });
     },
   });
 }

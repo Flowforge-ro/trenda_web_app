@@ -40,3 +40,21 @@ export function useLogin() {
     },
   });
 }
+
+export async function changePassword(payload: { currentPassword: string; newPassword: string }) {
+  const res = await apiFetch("/auth/change-password", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (res.status === 403) throw new Error("Parola actuală este greșită");
+  if (!res.ok) throw new Error("Schimbarea parolei a eșuat");
+  return res.json();
+}
+
+export function useChangePassword() {
+  return useMutation({
+    mutationFn: changePassword,
+    onSuccess: () => logAction("auth.change-password"),
+  });
+}
