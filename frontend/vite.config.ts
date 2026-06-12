@@ -22,6 +22,9 @@ export default defineConfig({
       "/organizations": "http://localhost:3000",
       "/users": "http://localhost:3000",
       "/logs": "http://localhost:3000",
+      "/appointment-fields": "http://localhost:3000",
+      "/appointments": "http://localhost:3000",
+      "/reports": "http://localhost:3000",
     },
   },
   test: {
