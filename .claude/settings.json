@@ -35,5 +35,9 @@
   },
   "enabledPlugins": {
     "claude-mem@thedotmack": true
+  },
+  "attribution" : {
+    "commit": "",
+    "pr": ""
   }
 }

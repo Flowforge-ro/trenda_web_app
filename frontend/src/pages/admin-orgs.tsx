@@ -8,6 +8,7 @@ import {
 } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useOrganizations, useCreateOrganization, useSetOrganizationSuspended, type Organization } from "@/lib/organizations";
+import { UsageSection } from "@/components/admin/usage-section";
 
 function CreateOrgDialog() {
   const create = useCreateOrganization();
@@ -83,6 +84,8 @@ export function OrgsTab() {
 
   return (
     <div className="space-y-4">
+      <UsageSection />
+
       <div className="flex justify-end">
         <CreateOrgDialog />
       </div>
