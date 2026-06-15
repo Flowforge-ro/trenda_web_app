@@ -6,7 +6,7 @@ import { LoginPage } from "./pages/login";
 import { OrdersPage } from "./pages/orders";
 import { PlaceholderPage } from "./pages/placeholder";
 import { SettingsPage } from "./pages/settings";
-import { AdminOrgsPage } from "./pages/admin-orgs";
+import { SuperadminPanel } from "./pages/admin";
 import { AppLayout } from "./components/layout/app-layout";
 
 const queryClient = new QueryClient();
@@ -20,7 +20,7 @@ function AuthGuard({ children }: { children: ReactNode }) {
     );
   }
   if (error || !user) return <Navigate to="/login" replace />;
-  if (user.role === "superadmin") return <AdminOrgsPage />;
+  if (user.role === "superadmin") return <SuperadminPanel />;
   return <>{children}</>;
 }
 

@@ -1,7 +1,8 @@
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
-import { loadSessionUser } from "../../lib/auth-context.js";
+import { loadSessionUser, requireRole } from "../../lib/auth-context.js";
 import { writeLog } from "../../lib/db-log.js";
+import { listLogs, listLogsQuerySchema } from "./logs.service.js";
 
 const entrySchema = z.object({
   level: z.enum(["info", "warn", "error"]),
@@ -49,5 +50,14 @@ export const logsRoutes: FastifyPluginAsync = async (app) => {
     );
 
     return reply.status(204).send();
+  });
+
+  // Superadmin-only log feed. Guarded inline so the anonymous POST above stays open.
+  app.get("/logs", async (request, reply) => {
+    const user = await requireRole("superadmin", request, reply);
+    if (!user) return reply;
+    const parsed = listLogsQuerySchema.safeParse(request.query);
+    if (!parsed.success) return reply.status(400).send({ error: "Invalid query" });
+    return listLogs(parsed.data);
   });
 };
