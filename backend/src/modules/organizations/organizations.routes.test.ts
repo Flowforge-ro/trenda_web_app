@@ -110,6 +110,7 @@ before(async () => {
       const tx = {
         organization: { create: () => Promise.resolve(fakeOrg) },
         user: { create: () => Promise.resolve(fakeAdmin) },
+        appointmentFieldConfig: { createMany: () => Promise.resolve({ count: 4 }) },
       };
       return fn(tx);
     },

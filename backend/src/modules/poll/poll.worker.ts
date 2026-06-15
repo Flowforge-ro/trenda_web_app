@@ -1,4 +1,5 @@
 import { pollReplies } from "./poll.service.js";
+import { pollClientMailboxes } from "../appointments/appointments.ingest.js";
 import { logError, pruneLogs } from "../../lib/db-log.js";
 
 const DEFAULT_POLL_INTERVAL_MS = 5 * 60 * 1000;
@@ -16,6 +17,7 @@ export function startPolling(): void {
     running = true;
     try {
       await pollReplies();
+      await pollClientMailboxes();
       await pruneLogs();
     } catch (err) {
       logError("Poll cycle error", err);
