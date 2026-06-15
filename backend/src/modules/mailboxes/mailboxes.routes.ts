@@ -28,13 +28,16 @@ export const mailboxesRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(500).send({ error: "No refresh token (check offline_access scope)" });
     }
 
-    await connectMailbox({
+    const result = await connectMailbox({
       orgId: user.orgId,
       userId: user.id,
       type,
       accessToken: token.access_token,
       refreshToken: token.refresh_token,
     });
+    if ("error" in result) {
+      return reply.status(409).send({ error: "Mailbox already connected to another organization" });
+    }
     request.session.set("pendingMailboxType", "");
     return reply.redirect(FRONTEND_SETTINGS_URL);
   });

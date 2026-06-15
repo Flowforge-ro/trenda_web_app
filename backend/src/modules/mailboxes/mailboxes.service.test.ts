@@ -6,6 +6,7 @@ function makeDeps(over: Partial<MailboxDeps> = {}): MailboxDeps {
   return {
     prisma: {
       mailbox: {
+        findUnique: async () => null,
         upsert: async ({ where, create, update }: any) => ({ id: "M1", microsoftId: where.microsoftId, ...create, ...update }),
         findMany: async ({ where }: any) =>
           where.orgId === "O1"
@@ -21,10 +22,12 @@ function makeDeps(over: Partial<MailboxDeps> = {}): MailboxDeps {
 }
 
 test("connectMailbox upserts a mailbox with the encrypted token and chosen type", async () => {
-  const mb = await connectMailbox(
+  const result = await connectMailbox(
     { orgId: "O1", userId: "U1", type: "vendor_facing", accessToken: "AT", refreshToken: "RT" },
     makeDeps()
   );
+  assert.ok(!("error" in result));
+  const mb = result;
   assert.equal(mb.microsoftId, "GID");
   assert.equal(mb.type, "vendor_facing");
   assert.equal(mb.orgId, "O1");
@@ -38,7 +41,46 @@ test("connectMailbox falls back to userPrincipalName when mail is null", async (
     getGraphUser: async () => ({ id: "GID", displayName: "X", mail: null, userPrincipalName: "upn@x.onmicrosoft.com" }),
   });
   const mb = await connectMailbox({ orgId: "O1", userId: "U1", type: "client_facing", accessToken: "AT", refreshToken: "RT" }, deps);
+  assert.ok(!("error" in mb));
   assert.equal(mb.email, "upn@x.onmicrosoft.com");
+});
+
+test("connectMailbox refuses to claim a mailbox already owned by another org", async () => {
+  let upserted = false;
+  const deps = makeDeps({
+    prisma: {
+      mailbox: {
+        findUnique: async () => ({ orgId: "O2" }),
+        upsert: async () => {
+          upserted = true;
+          return {} as any;
+        },
+      },
+    } as any,
+  });
+  const result = await connectMailbox(
+    { orgId: "O1", userId: "U1", type: "vendor_facing", accessToken: "AT", refreshToken: "RT" },
+    deps
+  );
+  assert.deepEqual(result, { error: "claimed" });
+  assert.equal(upserted, false);
+});
+
+test("connectMailbox still updates a mailbox owned by the same org", async () => {
+  const deps = makeDeps({
+    prisma: {
+      mailbox: {
+        findUnique: async () => ({ orgId: "O1" }),
+        upsert: async ({ where, create, update }: any) => ({ id: "M1", microsoftId: where.microsoftId, ...create, ...update }),
+      },
+    } as any,
+  });
+  const result = await connectMailbox(
+    { orgId: "O1", userId: "U1", type: "vendor_facing", accessToken: "AT", refreshToken: "RT" },
+    deps
+  );
+  assert.ok(!("error" in result));
+  assert.equal(result.orgId, "O1");
 });
 
 test("listMailboxes returns the org's mailboxes", async () => {
