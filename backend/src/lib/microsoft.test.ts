@@ -5,7 +5,7 @@ process.env.ENTRA_TENANT_ID ??= "test-tenant";
 process.env.ENTRA_CLIENT_ID ??= "test-client-id";
 process.env.ENTRA_CLIENT_SECRET_VALUE ??= "test-secret";
 
-import { getAccessTokenFromRefreshToken, createAndSendMail, listMessagesSince, listFileAttachments, listAttachmentMeta, getAttachmentBytes } from "./microsoft.js";
+import { getAccessTokenFromRefreshToken, createAndSendMail, listMessagesSince, listFileAttachments, listAttachmentMeta, getAttachmentBytes, replyToMessage } from "./microsoft.js";
 
 afterEach(() => mock.restoreAll());
 
@@ -238,4 +238,44 @@ test("getAttachmentBytes throws when no content bytes", async () => {
     new Response(JSON.stringify({ name: "x", contentType: "text/plain" }), { status: 200 })
   );
   await assert.rejects(() => getAttachmentBytes("AT", "MSG1", "A1"), /no content bytes/i);
+});
+
+test("listMessagesSince requests and parses conversationId", async () => {
+  let calledUrl = "";
+  mock.method(globalThis, "fetch", async (url: string) => {
+    calledUrl = url;
+    return new Response(
+      JSON.stringify({
+        value: [{ id: "m1", receivedDateTime: "2026-06-12T10:00:00Z", conversationId: "conv1" }],
+      }),
+      { status: 200 }
+    );
+  });
+
+  const result = await listMessagesSince("AT", "2026-06-12T09:00:00Z");
+
+  assert.ok(calledUrl.includes("conversationId"), `$select missing conversationId, url was ${calledUrl}`);
+  assert.equal(result[0].conversationId, "conv1");
+});
+
+test("replyToMessage POSTs comment to /messages/{id}/reply", async () => {
+  let capturedUrl = "";
+  let capturedInit: RequestInit = {};
+  mock.method(globalThis, "fetch", async (url: string, init?: RequestInit) => {
+    capturedUrl = url;
+    capturedInit = init ?? {};
+    return new Response(JSON.stringify({}), { status: 202 });
+  });
+
+  await replyToMessage("tok", "msg-1", "text body");
+
+  assert.equal(capturedUrl, "https://graph.microsoft.com/v1.0/me/messages/msg-1/reply");
+  assert.equal(JSON.parse(capturedInit.body as string).comment, "text body");
+  assert.equal((capturedInit.headers as Record<string, string>).Authorization, "Bearer tok");
+  assert.equal(capturedInit.method, "POST");
+});
+
+test("replyToMessage throws on non-ok response", async () => {
+  mock.method(globalThis, "fetch", async () => new Response("bad request", { status: 400 }));
+  await assert.rejects(() => replyToMessage("tok", "msg-1", "hello"), /Graph reply failed/);
 });

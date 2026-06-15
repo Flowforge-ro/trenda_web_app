@@ -14,9 +14,11 @@ model Organization {
   suspendedAt DateTime? // non-null = suspended: users lose all API access incl. login
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
-  users     User[]
-  mailboxes Mailbox[]
-  orders    Order[]
+  users                   User[]
+  mailboxes               Mailbox[]
+  orders                  Order[]
+  appointmentFieldConfigs AppointmentFieldConfig[]
+  appointments            Appointment[]
 }
 
 model User {
@@ -49,6 +51,7 @@ model Mailbox {
   createdAt             DateTime     @default(now())
   updatedAt             DateTime     @updatedAt
   orders                Order[]
+  appointments          Appointment[]
 }
 
 model Order {
@@ -119,4 +122,37 @@ model Log {
   @@index([level])
   @@index([source])
   @@index([requestId])
+}
+
+model AppointmentFieldConfig {
+  id          String       @id @default(cuid())
+  orgId       String
+  org         Organization @relation(fields: [orgId], references: [id])
+  key         String
+  label       String
+  description String
+  required    Boolean      @default(true)
+  sortOrder   Int          @default(0)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@unique([orgId, key])
+}
+
+model Appointment {
+  id             String       @id @default(cuid())
+  orgId          String
+  org            Organization @relation(fields: [orgId], references: [id])
+  mailboxId      String
+  mailbox        Mailbox      @relation(fields: [mailboxId], references: [id])
+  customerEmail  String
+  conversationId String
+  status         String       @default("collecting") // collecting | complete
+  fields         Json         @default("{}")
+  lastMessageAt  DateTime
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([mailboxId, conversationId])
+  @@index([orgId, createdAt, id])
 }

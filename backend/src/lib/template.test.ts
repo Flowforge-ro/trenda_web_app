@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { renderTemplate } from "./template.js";
+import { renderTemplate, renderMissingFields } from "./template.js";
 
 test("renderTemplate substitutes known placeholders", () => {
   const out = renderTemplate("piesa {piesa}, sasiu {serieSasiu}.", {
@@ -16,4 +16,10 @@ test("renderTemplate leaves unknown placeholders intact", () => {
     serieSasiu: "Y",
   });
   assert.equal(out, "hi X {altceva}");
+});
+
+test("renderMissingFields renders labels as a bulleted list", () => {
+  const out = renderMissingFields(["Telefon", "Data dorită"]);
+  assert.ok(out.includes("- Telefon\n- Data dorită"));
+  assert.ok(out.includes("programa")); // body text present
 });
