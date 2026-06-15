@@ -9,6 +9,9 @@ import {
   type AppointmentExtractionDeps,
 } from "./appointment-extraction.js";
 
+const USAGE = { provider: "gemini" as const, model: "gemini-3.5-flash", inputTokens: 12, outputTokens: 8 };
+const gen = (text: string) => ({ text, usage: USAGE });
+
 const FIELDS: AppointmentField[] = [
   { key: "nume", label: "Nume", description: "Numele complet al clientului", required: true },
   { key: "telefon", label: "Telefon", description: "Număr de telefon de contact", required: true },
@@ -16,15 +19,14 @@ const FIELDS: AppointmentField[] = [
 ];
 
 test("classifies appointment and extracts fields", async () => {
-  const generate: AppointmentExtractionDeps["generate"] = async () =>
-    JSON.stringify({ intent: "appointment", nume: "Ion Pop", telefon: null, dataDorita: "2026-06-20" });
+  const generate: AppointmentExtractionDeps["generate"] = async () => gen(JSON.stringify({ intent: "appointment", nume: "Ion Pop", telefon: null, dataDorita: "2026-06-20" }));
   const r = await extractAppointment("Bună, vreau o programare pe 20 iunie. Ion Pop", FIELDS, "2026-06-12", { classify: true }, { generate });
   assert.equal(r.intent, "appointment");
   assert.deepEqual(r.fields, { nume: "Ion Pop", telefon: null, dataDorita: "2026-06-20" });
 });
 
 test("classifies non-appointment intent", async () => {
-  const generate: AppointmentExtractionDeps["generate"] = async () => JSON.stringify({ intent: "other", nume: null, telefon: null, dataDorita: null });
+  const generate: AppointmentExtractionDeps["generate"] = async () => gen(JSON.stringify({ intent: "other", nume: null, telefon: null, dataDorita: null }));
   const r = await extractAppointment("Unde aveți sediul?", FIELDS, "2026-06-12", { classify: true }, { generate });
   assert.equal(r.intent, "other");
 });
@@ -33,7 +35,7 @@ test("classify:false omits intent from schema and defaults intent to appointment
   let captured: unknown;
   const generate: AppointmentExtractionDeps["generate"] = async (_parts, schema) => {
     captured = schema;
-    return JSON.stringify({ nume: null, telefon: "0722111222", dataDorita: null });
+    return gen(JSON.stringify({ nume: null, telefon: "0722111222", dataDorita: null }));
   };
   const r = await extractAppointment("Telefonul e 0722111222", FIELDS, "2026-06-12", { classify: false }, { generate });
   assert.equal(r.intent, "appointment");
@@ -45,7 +47,7 @@ test("field descriptions reach the schema; empty strings become null", async () 
   let captured = "";
   const generate: AppointmentExtractionDeps["generate"] = async (_parts, schema) => {
     captured = JSON.stringify(schema);
-    return JSON.stringify({ nume: "", telefon: null, dataDorita: null });
+    return gen(JSON.stringify({ nume: "", telefon: null, dataDorita: null }));
   };
   const r = await extractAppointment("...", FIELDS, "2026-06-12", { classify: false }, { generate });
   assert.ok(captured.includes("Număr de telefon de contact"));

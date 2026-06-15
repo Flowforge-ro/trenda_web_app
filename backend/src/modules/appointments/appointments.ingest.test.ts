@@ -30,10 +30,10 @@ interface State {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   creates: any[]; updates: any[]; replies: any[]; mailboxUpdates: any[];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  extractCalls: any[]; listCalls: number;
+  extractCalls: any[]; listCalls: number; usage: any[];
 }
 function newState(): State {
-  return { creates: [], updates: [], replies: [], mailboxUpdates: [], extractCalls: [], listCalls: 0 };
+  return { creates: [], updates: [], replies: [], mailboxUpdates: [], extractCalls: [], listCalls: 0, usage: [] };
 }
 
 const FILLED: AppointmentExtraction = { intent: "appointment", fields: { nume: "Ion", telefon: "0712", dataDorita: "2026-06-20" } };
@@ -80,6 +80,7 @@ function makeDeps(opts: Opts): ClientPollDeps {
       return extractResult ? extractResult(o) : FILLED;
     }) as any,
     renderMissingFields: (labels: string[]) => labels.map((l) => `- ${l}`).join("\n"),
+    recordUsage: (async (e: any) => { state.usage.push(e); }) as any,
     now: () => new Date("2026-06-12T10:00:00Z"),
   };
 }
@@ -108,6 +109,16 @@ test("new thread, intent other → no create, no reply", async () => {
   await pollClientMailboxes(makeDeps({ state, extractResult: () => ({ intent: "other", fields: {} }) }));
   assert.equal(state.creates.length, 0);
   assert.equal(state.replies.length, 0);
+});
+
+test("meters a classification event with the intent outcome and email_read", async () => {
+  const state = newState();
+  await pollClientMailboxes(makeDeps({ state, extractResult: () => ({ intent: "other", fields: {} }) }));
+  const cls = state.usage.find((e) => e.kind === "classification");
+  assert.ok(cls);
+  assert.equal(cls.outcome, "other");
+  assert.equal(cls.orgId, "org1");
+  assert.ok(state.usage.some((e) => e.kind === "email_read" && e.emails === 1));
 });
 
 test("reply in known collecting thread completing fields → update complete, no reply, classify:false", async () => {

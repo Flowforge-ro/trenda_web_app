@@ -1,5 +1,6 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import type { ContentPart } from "./extraction.js";
+import type { LlmUsage } from "./usage.js";
 
 const MODEL = "gemini-3.5-flash";
 
@@ -13,12 +14,14 @@ export interface AppointmentField {
 export interface AppointmentExtraction {
   intent: "appointment" | "other";
   fields: Record<string, string | null>;
+  // Token usage of the LLM call (for metering).
+  usage?: LlmUsage;
 }
 
 /** Schema is per-call (dynamic), so generate receives it explicitly — unlike
  *  extraction.ts where the schema is baked into defaultGenerate. */
 export interface AppointmentExtractionDeps {
-  generate: (parts: ContentPart[], responseSchema: unknown) => Promise<string>;
+  generate: (parts: ContentPart[], responseSchema: unknown) => Promise<{ text: string; usage: LlmUsage }>;
 }
 
 function buildSchema(fields: AppointmentField[], classify: boolean): unknown {
@@ -47,14 +50,22 @@ export function buildAppointmentParts(body: string, today: string): ContentPart[
   return [{ text: lines.join("\n") }];
 }
 
-async function defaultGenerate(parts: ContentPart[], responseSchema: unknown): Promise<string> {
+async function defaultGenerate(parts: ContentPart[], responseSchema: unknown): Promise<{ text: string; usage: LlmUsage }> {
   const ai = new GoogleGenAI({ apiKey: process.env.GOOGLE_LLM_API_KEY! });
   const response = await ai.models.generateContent({
     model: MODEL,
     contents: parts,
     config: { responseMimeType: "application/json", responseSchema: responseSchema as never },
   });
-  return response.text ?? "";
+  return {
+    text: response.text ?? "",
+    usage: {
+      provider: "gemini",
+      model: MODEL,
+      inputTokens: response.usageMetadata?.promptTokenCount ?? 0,
+      outputTokens: response.usageMetadata?.candidatesTokenCount ?? 0,
+    },
+  };
 }
 
 const defaultDeps: AppointmentExtractionDeps = { generate: defaultGenerate };
@@ -66,8 +77,8 @@ export async function extractAppointment(
   opts: { classify: boolean },
   deps: AppointmentExtractionDeps = defaultDeps
 ): Promise<AppointmentExtraction> {
-  const raw = await deps.generate(buildAppointmentParts(body, today), buildSchema(fields, opts.classify));
-  const parsed = JSON.parse(raw) as Record<string, unknown>;
+  const { text, usage } = await deps.generate(buildAppointmentParts(body, today), buildSchema(fields, opts.classify));
+  const parsed = JSON.parse(text) as Record<string, unknown>;
 
   const intent: AppointmentExtraction["intent"] =
     opts.classify && parsed.intent === "other" ? "other" : "appointment";
@@ -77,7 +88,7 @@ export async function extractAppointment(
     const v = parsed[f.key];
     out[f.key] = typeof v === "string" && v.trim() !== "" ? v : null;
   }
-  return { intent, fields: out };
+  return { intent, fields: out, usage };
 }
 
 /** Merge: extracted non-null values overwrite stored ones (corrections win). */

@@ -5,6 +5,7 @@ import type { GraphMessage } from "../../lib/microsoft.js";
 
 const ORDER = {
   id: "O1",
+  orgId: "ORG1",
   mailboxId: "M1",
   internetMessageId: "<orig@us>",
   createdAt: new Date("2026-06-01T08:00:00Z"),
@@ -25,7 +26,7 @@ function matchingMessage(): GraphMessage {
   } as GraphMessage;
 }
 
-type State = { orders: any[]; replies: any[]; replyUpdates: any[]; mailboxUpdates: any[] };
+type State = { orders: any[]; replies: any[]; replyUpdates: any[]; mailboxUpdates: any[]; usage?: any[] };
 
 function makeDeps(state: State, messages: GraphMessage[], overrides: Partial<PollDeps> = {}): PollDeps {
   return {
@@ -49,7 +50,7 @@ function makeDeps(state: State, messages: GraphMessage[], overrides: Partial<Pol
         },
       },
       mailbox: {
-        findUnique: async () => ({ encryptedRefreshToken: "enc", lastPolledAt: null }),
+        findUnique: async () => ({ encryptedRefreshToken: "enc", lastPolledAt: null, orgId: "ORG1" }),
         update: async ({ data }: any) => {
           state.mailboxUpdates.push(data);
           return {};
@@ -72,6 +73,7 @@ function makeDeps(state: State, messages: GraphMessage[], overrides: Partial<Pol
     createAndSendMail: async () => ({ internetMessageId: "<sent@x>" }),
     listFileAttachments: async () => [],
     extractOrderInfo: async () => ({ orderNumber: null, deliveryTime: null, deliveryEarliest: null, deliveryLatest: null, orderNumberGrounded: true, deliveryGrounded: true, status: "needs_review" as const }),
+    recordUsage: (async (e: any) => { (state.usage ??= []).push(e); }) as any,
     now: () => new Date("2026-06-01T10:05:00Z"),
     ...overrides,
   };
@@ -137,7 +139,7 @@ test("pollReplies re-encrypts a rotated refresh token on the mailbox", async () 
   assert.ok(state.mailboxUpdates.some((u) => u.encryptedRefreshToken === "enc(RT2)"));
 });
 
-const PENDING = { id: "O2", mailboxId: "M1", internetMessageId: "<orig2@us>", createdAt: new Date("2026-06-01T08:00:00Z"), emailStatus: "trimis", replyStatus: "reply_received" };
+const PENDING = { id: "O2", orgId: "ORG1", mailboxId: "M1", internetMessageId: "<orig2@us>", createdAt: new Date("2026-06-01T08:00:00Z"), emailStatus: "trimis", replyStatus: "reply_received" };
 
 test("extract phase writes fields and sets extracted on a confident result", async () => {
   const state: State = { orders: [PENDING], replies: [{ orderId: "O2", graphMessageId: "M2", body: "Comanda CMD42" }], replyUpdates: [], mailboxUpdates: [] };
@@ -177,13 +179,35 @@ test("extract phase routes an ungrounded order number to needs_review", async ()
   assert.equal(update.orderNumberConfidence, "low");
 });
 
+test("extract phase meters llm token usage + cost for the order's org", async () => {
+  const state: State = { orders: [PENDING], replies: [{ orderId: "O2", graphMessageId: "M2", body: "Comanda CMD42" }], replyUpdates: [], mailboxUpdates: [] };
+  await pollReplies(makeDeps(state, [], {
+    extractOrderInfo: async () => ({ orderNumber: "CMD42", deliveryTime: "x", deliveryEarliest: new Date("2026-06-20T00:00:00.000Z"), deliveryLatest: new Date("2026-06-20T00:00:00.000Z"), orderNumberGrounded: true, deliveryGrounded: true, status: "extracted" as const, usage: { provider: "openai", model: "gpt-5.4-mini", inputTokens: 100, outputTokens: 50 } }),
+  }));
+  const llm = (state.usage ?? []).find((e) => e.kind === "llm");
+  assert.ok(llm);
+  assert.equal(llm.orgId, "ORG1");
+  assert.equal(llm.promptTokens, 100);
+  assert.equal(llm.completionTokens, 50);
+  assert.ok(llm.costUsd > 0);
+});
+
+test("ingest phase meters email_read for fetched messages", async () => {
+  const state: State = { orders: [ORDER], replies: [], replyUpdates: [], mailboxUpdates: [] };
+  await pollReplies(makeDeps(state, [matchingMessage()]));
+  const read = (state.usage ?? []).find((e) => e.kind === "email_read");
+  assert.ok(read);
+  assert.equal(read.emails, 1);
+  assert.equal(read.orgId, "ORG1");
+});
+
 test("extract phase leaves order at reply_received when the extractor throws", async () => {
   const state: State = { orders: [PENDING], replies: [{ orderId: "O2", graphMessageId: "M2", body: "text" }], replyUpdates: [], mailboxUpdates: [] };
   await pollReplies(makeDeps(state, [], { extractOrderInfo: async () => { throw new Error("gemini down"); } }));
   assert.equal(state.replyUpdates.find((u) => u.id === "O2"), undefined);
 });
 
-const DUE_ORDER = { id: "O3", mailboxId: "M1", emailFurnizor: "f@ex.ro", serieSasiu: "WVW1", deliveryEarliest: new Date("2026-06-02T00:00:00.000Z"), statusRequestSentAt: null };
+const DUE_ORDER = { id: "O3", orgId: "ORG1", mailboxId: "M1", emailFurnizor: "f@ex.ro", serieSasiu: "WVW1", deliveryEarliest: new Date("2026-06-02T00:00:00.000Z"), statusRequestSentAt: null };
 
 test("status phase emails the supplier from the order's mailbox when delivery is due", async () => {
   let sent: any;
@@ -201,7 +225,7 @@ test("status phase does not email when delivery is far away", async () => {
   assert.equal(called, false);
 });
 
-const NEEDS_VISION = { id: "O4", mailboxId: "M1", internetMessageId: "<orig4@us>", createdAt: new Date("2026-06-01T08:00:00Z"), emailStatus: "trimis", replyStatus: "reply_received" };
+const NEEDS_VISION = { id: "O4", orgId: "ORG1", mailboxId: "M1", internetMessageId: "<orig4@us>", createdAt: new Date("2026-06-01T08:00:00Z"), emailStatus: "trimis", replyStatus: "reply_received" };
 const D20 = new Date("2026-06-20T00:00:00.000Z");
 const splitExtractor = async (source: any) =>
   source.kind === "binary"

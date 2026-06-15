@@ -3,6 +3,8 @@ import { decrypt, encrypt } from "../../lib/crypto.js";
 import { getAccessTokenFromRefreshToken, listMessagesSince, createAndSendMail, listFileAttachments } from "../../lib/microsoft.js";
 import { extractOrderInfo, mergeMissing, type ExtractionResult, type ExtractionSource } from "../../lib/extraction.js";
 import { scoreConfidence, needsReview } from "../../lib/confidence.js";
+import { recordUsage, estimateCostUsd } from "../../lib/usage.js";
+import type { LlmUsage } from "../../lib/usage.js";
 import { getMailboxAccessToken } from "../../lib/mailbox-token.js";
 import { matchReply, normalizeMessageId } from "./matching.js";
 import { logError } from "../../lib/db-log.js";
@@ -17,6 +19,7 @@ export interface PollDeps {
   createAndSendMail: typeof createAndSendMail;
   extractOrderInfo: (source: ExtractionSource, today: string) => Promise<ExtractionResult>;
   listFileAttachments: typeof listFileAttachments;
+  recordUsage: typeof recordUsage;
   now: () => Date;
 }
 
@@ -29,8 +32,23 @@ const defaultDeps: PollDeps = {
   createAndSendMail,
   extractOrderInfo,
   listFileAttachments,
+  recordUsage,
   now: () => new Date(),
 };
+
+/** Record an LLM call's token usage + estimated cost against an org. */
+async function meterLlm(deps: PollDeps, orgId: string, usage: LlmUsage | undefined): Promise<void> {
+  if (!usage) return;
+  await deps.recordUsage({
+    orgId,
+    kind: "llm",
+    provider: usage.provider,
+    model: usage.model,
+    promptTokens: usage.inputTokens,
+    completionTokens: usage.outputTokens,
+    costUsd: estimateCostUsd(usage.model, usage.inputTokens, usage.outputTokens),
+  });
+}
 
 const OVERLAP_MS = 2 * 60 * 1000;
 // Orders older than this stop being matched against incoming mail, so the
@@ -94,12 +112,12 @@ async function ingestReplies(deps: PollDeps, getToken: GetToken): Promise<void> 
   }
 }
 
-type PendingOrder = Pick<Order, "id" | "mailboxId" | "orderNumber" | "deliveryTime" | "deliveryEarliest" | "deliveryLatest">;
+type PendingOrder = Pick<Order, "id" | "orgId" | "mailboxId" | "orderNumber" | "deliveryTime" | "deliveryEarliest" | "deliveryLatest">;
 
 async function extractPending(deps: PollDeps, getToken: GetToken): Promise<void> {
   const pending = (await deps.prisma.order.findMany({
     where: { replyStatus: "reply_received", closedAt: null, org: { suspendedAt: null } },
-    select: { id: true, mailboxId: true, orderNumber: true, deliveryTime: true, deliveryEarliest: true, deliveryLatest: true },
+    select: { id: true, orgId: true, mailboxId: true, orderNumber: true, deliveryTime: true, deliveryEarliest: true, deliveryLatest: true },
   }));
   if (pending.length === 0) return;
 
@@ -134,6 +152,7 @@ async function extractForOrder(order: PendingOrder, getToken: GetToken, deps: Po
   let result: ExtractionResult = reply?.body
     ? await deps.extractOrderInfo({ kind: "text", body: reply.body }, today)
     : { orderNumber: null, deliveryTime: null, deliveryEarliest: null, deliveryLatest: null, orderNumberGrounded: true, deliveryGrounded: true, status: "needs_review" };
+  await meterLlm(deps, order.orgId, result.usage);
 
   // The token is only needed for attachment fallback; fetch it lazily so a
   // text-only extraction never costs a refresh, and a failed refresh still
@@ -154,7 +173,9 @@ async function extractForOrder(order: PendingOrder, getToken: GetToken, deps: Po
       .filter((x) => x.mime !== null)
       .sort((x, y) => Number(y.mime === "application/pdf") - Number(x.mime === "application/pdf"));
     for (const { a, mime } of sources) {
-      result = mergeMissing(result, await deps.extractOrderInfo({ kind: "binary", bytes: a.bytes, mimeType: mime! }, today));
+      const attResult = await deps.extractOrderInfo({ kind: "binary", bytes: a.bytes, mimeType: mime! }, today);
+      await meterLlm(deps, order.orgId, attResult.usage);
+      result = mergeMissing(result, attResult);
       if (result.status === "extracted") break;
     }
   }
@@ -195,12 +216,12 @@ async function extractForOrder(order: PendingOrder, getToken: GetToken, deps: Po
   });
 }
 
-type DueOrder = Pick<Order, "id" | "mailboxId" | "emailFurnizor" | "serieSasiu" | "deliveryEarliest">;
+type DueOrder = Pick<Order, "id" | "orgId" | "mailboxId" | "emailFurnizor" | "serieSasiu" | "deliveryEarliest">;
 
 async function requestStatusUpdates(deps: PollDeps, getToken: GetToken): Promise<void> {
   const candidates = (await deps.prisma.order.findMany({
     where: { deliveryEarliest: { not: null }, statusRequestSentAt: null, closedAt: null, org: { suspendedAt: null } },
-    select: { id: true, mailboxId: true, emailFurnizor: true, serieSasiu: true, deliveryEarliest: true },
+    select: { id: true, orgId: true, mailboxId: true, emailFurnizor: true, serieSasiu: true, deliveryEarliest: true },
   }));
 
   const now = deps.now();
@@ -216,6 +237,7 @@ async function requestStatusUpdates(deps: PollDeps, getToken: GetToken): Promise
         subject: `Status comandă — ${order.serieSasiu}`,
         body: "Status?",
       });
+      await deps.recordUsage({ orgId: order.orgId, kind: "email_write", emails: 1 });
       await deps.prisma.order.update({ where: { id: order.id }, data: { statusRequestSentAt: now } });
     } catch (err) {
       // Leave statusRequestSentAt null so the next poll retries this order.
@@ -230,7 +252,7 @@ async function pollMailbox(mailboxId: string, orders: MatchableOrder[], deps: Po
 
   const mailbox = await deps.prisma.mailbox.findUnique({
     where: { id: mailboxId },
-    select: { lastPolledAt: true },
+    select: { orgId: true, lastPolledAt: true },
   });
 
   const oldestCreatedAt = orders.reduce((min, o) => (o.createdAt < min ? o.createdAt : min), orders[0].createdAt);
@@ -238,6 +260,9 @@ async function pollMailbox(mailboxId: string, orders: MatchableOrder[], deps: Po
   const sinceIso = new Date(base.getTime() - OVERLAP_MS).toISOString();
 
   const messages = await deps.listMessagesSince(accessToken, sinceIso);
+  if (messages.length > 0 && mailbox?.orgId) {
+    await deps.recordUsage({ orgId: mailbox.orgId, kind: "email_read", emails: messages.length });
+  }
 
   const byMessageId = new Map<string, MatchableOrder>();
   for (const order of orders) {

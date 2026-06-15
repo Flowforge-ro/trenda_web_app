@@ -15,6 +15,8 @@ import {
 } from "../../lib/appointment-extraction.js";
 import { renderMissingFields } from "../../lib/template.js";
 import { logError } from "../../lib/db-log.js";
+import { recordUsage, estimateCostUsd } from "../../lib/usage.js";
+import type { LlmUsage } from "../../lib/usage.js";
 
 export interface ClientPollDeps {
   prisma: typeof prisma;
@@ -25,6 +27,7 @@ export interface ClientPollDeps {
   replyToMessage: typeof replyToMessage;
   extractAppointment: typeof extractAppointment;
   renderMissingFields: typeof renderMissingFields;
+  recordUsage: typeof recordUsage;
   now: () => Date;
 }
 
@@ -37,8 +40,22 @@ const defaultDeps: ClientPollDeps = {
   replyToMessage,
   extractAppointment,
   renderMissingFields,
+  recordUsage,
   now: () => new Date(),
 };
+
+async function meterLlm(deps: ClientPollDeps, orgId: string, usage: LlmUsage | undefined): Promise<void> {
+  if (!usage) return;
+  await deps.recordUsage({
+    orgId,
+    kind: "llm",
+    provider: usage.provider,
+    model: usage.model,
+    promptTokens: usage.inputTokens,
+    completionTokens: usage.outputTokens,
+    costUsd: estimateCostUsd(usage.model, usage.inputTokens, usage.outputTokens),
+  });
+}
 
 const OVERLAP_MS = 2 * 60 * 1000;
 
@@ -82,6 +99,9 @@ async function pollClientMailbox(mailbox: ClientMailbox, deps: ClientPollDeps): 
   const base = mailbox.lastPolledAt ?? mailbox.createdAt;
   const sinceIso = new Date(base.getTime() - OVERLAP_MS).toISOString();
   const messages = await deps.listMessagesSince(accessToken, sinceIso);
+  if (messages.length > 0) {
+    await deps.recordUsage({ orgId: mailbox.orgId, kind: "email_read", emails: messages.length });
+  }
 
   for (const message of messages) {
     try {
@@ -128,6 +148,9 @@ async function processMessage(
 
   if (!existing) {
     const result = await deps.extractAppointment(message.body.content, fields, today, { classify: true });
+    await meterLlm(deps, mailbox.orgId, result.usage);
+    // Classification outcome: appointment vs junk (other).
+    await deps.recordUsage({ orgId: mailbox.orgId, kind: "classification", outcome: result.intent });
     if (result.intent === "other") return; // ignored entirely (spec decision)
 
     const missing = missingRequired(fields, result.fields);
@@ -144,12 +167,14 @@ async function processMessage(
     });
     if (missing.length > 0) {
       await deps.replyToMessage(accessToken, message.id, deps.renderMissingFields(missing.map((f) => f.label)));
+      await deps.recordUsage({ orgId: mailbox.orgId, kind: "email_write", emails: 1 });
     }
     return;
   }
 
   // Known thread: extraction only (no intent), merge corrections over stored.
   const result = await deps.extractAppointment(message.body.content, fields, today, { classify: false });
+  await meterLlm(deps, mailbox.orgId, result.usage);
   const merged = mergeFields(existing.fields as Record<string, string | null>, result.fields);
   const missing = missingRequired(fields, merged);
   const wasComplete = existing.status === "complete";
@@ -166,5 +191,6 @@ async function processMessage(
   // Never email a thread that has already completed (spec: corrections merge silently).
   if (missing.length > 0 && !wasComplete) {
     await deps.replyToMessage(accessToken, message.id, deps.renderMissingFields(missing.map((f) => f.label)));
+    await deps.recordUsage({ orgId: mailbox.orgId, kind: "email_write", emails: 1 });
   }
 }

@@ -4,8 +4,17 @@ import { extractOrderInfo, mergeMissing, type ExtractionDeps, type ExtractionSou
 
 const noopLogger = { info: () => {}, warn: () => {} };
 
-function provider(name: LlmProvider["name"], generate: LlmProvider["generate"]): LlmProvider {
-  return { name, model: `${name}-model`, generate };
+type GenText = (source: ExtractionSource, today: string) => Promise<string>;
+function provider(name: LlmProvider["name"], genText: GenText): LlmProvider {
+  const model = `${name}-model`;
+  return {
+    name,
+    model,
+    generate: async (source, today) => ({
+      text: await genText(source, today),
+      usage: { provider: name, model, inputTokens: 10, outputTokens: 5 },
+    }),
+  };
 }
 
 // Primary returns the given JSON; fallback always throws so we know it wasn't used.
@@ -163,6 +172,14 @@ test("logs the provider that served the extraction", async () => {
   });
   assert.equal(logged.length, 1);
   assert.equal(logged[0].provider, "openai");
+});
+
+test("extractOrderInfo surfaces the serving provider's token usage", async () => {
+  const json = buildJson({ orderNumber: "CMD42", deliveryTime: null, deliveryEarliest: null, deliveryLatest: null });
+  const r = await extractOrderInfo({ kind: "text", body: "body" }, "2026-06-01", fakeDeps(json));
+  assert.equal(r.usage?.provider, "openai");
+  assert.equal(r.usage?.inputTokens, 10);
+  assert.equal(r.usage?.outputTokens, 5);
 });
 
 test("mergeMissing fills orderNumber from extra", () => {

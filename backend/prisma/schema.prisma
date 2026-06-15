@@ -19,6 +19,7 @@ model Organization {
   orders                  Order[]
   appointmentFieldConfigs AppointmentFieldConfig[]
   appointments            Appointment[]
+  usageEvents             UsageEvent[]
 }
 
 model User {
@@ -122,6 +123,23 @@ model Log {
   @@index([level])
   @@index([source])
   @@index([requestId])
+}
+
+model UsageEvent {
+  id               String       @id @default(cuid())
+  orgId            String
+  org              Organization @relation(fields: [orgId], references: [id])
+  kind             String // "llm" | "email_read" | "email_write" | "classification"
+  provider         String? // "openai" | "gemini"
+  model            String?
+  promptTokens     Int          @default(0)
+  completionTokens Int          @default(0)
+  costUsd          Float        @default(0)
+  emails           Int          @default(0) // count for email_read / email_write
+  outcome          String? // classification: "appointment" | "other"
+  createdAt        DateTime     @default(now())
+
+  @@index([orgId, createdAt])
 }
 
 model AppointmentFieldConfig {

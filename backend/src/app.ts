@@ -16,6 +16,7 @@ import { organizationsRoutes } from "./modules/organizations/organizations.route
 import { usersRoutes } from "./modules/users/users.routes.js";
 import { mailboxesRoutes } from "./modules/mailboxes/mailboxes.routes.js";
 import { appointmentsRoutes } from "./modules/appointments/appointments.routes.js";
+import { usageRoutes } from "./system/usage/usage.routes.js";
 import { logsRoutes } from "./system/logs/logs.routes.js";
 
 const isProd = process.env.NODE_ENV === "production";
@@ -100,6 +101,7 @@ await app.register(organizationsRoutes);
 await app.register(usersRoutes);
 await app.register(mailboxesRoutes);
 await app.register(appointmentsRoutes);
+await app.register(usageRoutes);
 await app.register(logsRoutes);
 
 // Global error handler: the full error is logged server-side; the client only ever
