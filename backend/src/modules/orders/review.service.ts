@@ -9,6 +9,7 @@ import {
   type FileAttachment,
 } from "../../lib/microsoft.js";
 import { getMailboxAccessToken } from "../../lib/mailbox-token.js";
+import type { ConfidenceLevel } from "../../lib/confidence.js";
 
 export interface ReviewDeps {
   prisma: typeof prisma;
@@ -36,6 +37,8 @@ export interface OrderReviewResult {
   reply: { fromEmail: string; subject: string | null; receivedDateTime: Date; body: string | null };
   attachments: AttachmentMeta[];
   current: { orderNumber: string | null; deliveryTime: string | null; deliveryEarliest: Date | null; deliveryLatest: Date | null };
+  confidence: { orderNumber: ConfidenceLevel; delivery: ConfidenceLevel };
+  reasons: string[];
 }
 
 export async function getReviewAttachment(
@@ -90,6 +93,10 @@ export async function saveOrderReview(
       deliveryEarliest: earliest ? new Date(earliest) : undefined,
       deliveryLatest: latest ? new Date(latest) : undefined,
       replyStatus: "extracted",
+      // Human-verified: clear the confidence flags and reasons.
+      orderNumberConfidence: "high",
+      deliveryConfidence: "high",
+      reviewReasons: null,
     },
   });
 }
@@ -118,5 +125,11 @@ export async function getOrderReview(
       deliveryEarliest: order.deliveryEarliest,
       deliveryLatest: order.deliveryLatest,
     },
+    confidence: {
+      // Legacy/manually-saved orders have no stored confidence — treat as high.
+      orderNumber: (order.orderNumberConfidence as ConfidenceLevel | null) ?? "high",
+      delivery: (order.deliveryConfidence as ConfidenceLevel | null) ?? "high",
+    },
+    reasons: order.reviewReasons ? order.reviewReasons.split("\n") : [],
   };
 }

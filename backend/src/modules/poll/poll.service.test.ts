@@ -71,7 +71,7 @@ function makeDeps(state: State, messages: GraphMessage[], overrides: Partial<Pol
     listMessagesSince: async () => messages,
     createAndSendMail: async () => ({ internetMessageId: "<sent@x>" }),
     listFileAttachments: async () => [],
-    extractOrderInfo: async () => ({ orderNumber: null, deliveryTime: null, deliveryEarliest: null, deliveryLatest: null, status: "needs_review" as const }),
+    extractOrderInfo: async () => ({ orderNumber: null, deliveryTime: null, deliveryEarliest: null, deliveryLatest: null, orderNumberGrounded: true, deliveryGrounded: true, status: "needs_review" as const }),
     now: () => new Date("2026-06-01T10:05:00Z"),
     ...overrides,
   };
@@ -142,12 +142,39 @@ const PENDING = { id: "O2", mailboxId: "M1", internetMessageId: "<orig2@us>", cr
 test("extract phase writes fields and sets extracted on a confident result", async () => {
   const state: State = { orders: [PENDING], replies: [{ orderId: "O2", graphMessageId: "M2", body: "Comanda CMD42" }], replyUpdates: [], mailboxUpdates: [] };
   await pollReplies(makeDeps(state, [], {
-    extractOrderInfo: async () => ({ orderNumber: "CMD42", deliveryTime: "20 iunie", deliveryEarliest: new Date("2026-06-20T00:00:00.000Z"), deliveryLatest: new Date("2026-06-20T00:00:00.000Z"), status: "extracted" as const }),
+    extractOrderInfo: async () => ({ orderNumber: "CMD42", deliveryTime: "20 iunie", deliveryEarliest: new Date("2026-06-20T00:00:00.000Z"), deliveryLatest: new Date("2026-06-20T00:00:00.000Z"), orderNumberGrounded: true, deliveryGrounded: true, status: "extracted" as const }),
   }));
   const update = state.replyUpdates.find((u) => u.id === "O2");
   assert.ok(update);
   assert.equal(update.orderNumber, "CMD42");
   assert.equal(update.replyStatus, "extracted");
+  assert.equal(update.orderNumberConfidence, "high");
+  assert.equal(update.deliveryConfidence, "high");
+  assert.equal(update.reviewReasons, null);
+});
+
+test("extract phase routes a low-confidence (past-dated) result to needs_review with reasons", async () => {
+  const state: State = { orders: [PENDING], replies: [{ orderId: "O2", graphMessageId: "M2", body: "Comanda CMD42" }], replyUpdates: [], mailboxUpdates: [] };
+  await pollReplies(makeDeps(state, [], {
+    // Present fields, but the delivery date is in the past relative to now() = 2026-06-01.
+    extractOrderInfo: async () => ({ orderNumber: "CMD42", deliveryTime: "20 mai", deliveryEarliest: new Date("2026-05-20T00:00:00.000Z"), deliveryLatest: new Date("2026-05-20T00:00:00.000Z"), orderNumberGrounded: true, deliveryGrounded: true, status: "extracted" as const }),
+  }));
+  const update = state.replyUpdates.find((u) => u.id === "O2");
+  assert.ok(update);
+  assert.equal(update.replyStatus, "needs_review");
+  assert.equal(update.deliveryConfidence, "low");
+  assert.match(update.reviewReasons, /trecut/);
+});
+
+test("extract phase routes an ungrounded order number to needs_review", async () => {
+  const state: State = { orders: [PENDING], replies: [{ orderId: "O2", graphMessageId: "M2", body: "Comanda CMD42" }], replyUpdates: [], mailboxUpdates: [] };
+  await pollReplies(makeDeps(state, [], {
+    extractOrderInfo: async () => ({ orderNumber: "CMD42", deliveryTime: "20 iunie", deliveryEarliest: new Date("2026-06-20T00:00:00.000Z"), deliveryLatest: new Date("2026-06-20T00:00:00.000Z"), orderNumberGrounded: false, deliveryGrounded: true, status: "extracted" as const }),
+  }));
+  const update = state.replyUpdates.find((u) => u.id === "O2");
+  assert.ok(update);
+  assert.equal(update.replyStatus, "needs_review");
+  assert.equal(update.orderNumberConfidence, "low");
 });
 
 test("extract phase leaves order at reply_received when the extractor throws", async () => {
@@ -178,8 +205,8 @@ const NEEDS_VISION = { id: "O4", mailboxId: "M1", internetMessageId: "<orig4@us>
 const D20 = new Date("2026-06-20T00:00:00.000Z");
 const splitExtractor = async (source: any) =>
   source.kind === "binary"
-    ? { orderNumber: null, deliveryTime: "20 iunie", deliveryEarliest: D20, deliveryLatest: D20, status: "needs_review" as const }
-    : { orderNumber: "CMD9", deliveryTime: null, deliveryEarliest: null, deliveryLatest: null, status: "needs_review" as const };
+    ? { orderNumber: null, deliveryTime: "20 iunie", deliveryEarliest: D20, deliveryLatest: D20, orderNumberGrounded: true, deliveryGrounded: true, status: "needs_review" as const }
+    : { orderNumber: "CMD9", deliveryTime: null, deliveryEarliest: null, deliveryLatest: null, orderNumberGrounded: true, deliveryGrounded: true, status: "needs_review" as const };
 
 test("extract phase fills missing fields from an attachment and reaches extracted", async () => {
   const state: State = { orders: [NEEDS_VISION], replies: [{ orderId: "O4", graphMessageId: "M4", body: "body-text", hasAttachments: true }], replyUpdates: [], mailboxUpdates: [] };
@@ -216,7 +243,7 @@ test("re-extraction keeps existing order fields the correction reply omits", asy
   };
   const state: State = { orders: [corrected], replies: [{ orderId: "O2", graphMessageId: "M3", body: "Livrare amânată: 25 iunie" }], replyUpdates: [], mailboxUpdates: [] };
   await pollReplies(makeDeps(state, [], {
-    extractOrderInfo: async () => ({ orderNumber: null, deliveryTime: "25 iunie", deliveryEarliest: D25, deliveryLatest: D25, status: "needs_review" as const }),
+    extractOrderInfo: async () => ({ orderNumber: null, deliveryTime: "25 iunie", deliveryEarliest: D25, deliveryLatest: D25, orderNumberGrounded: true, deliveryGrounded: true, status: "needs_review" as const }),
   }));
   const update = state.replyUpdates.find((u) => u.id === "O2");
   assert.ok(update);
@@ -237,7 +264,7 @@ test("re-extraction re-arms the status nudge when the delivery date changes", as
   };
   const state: State = { orders: [corrected], replies: [{ orderId: "O2", graphMessageId: "M3", body: "Livrare amânată: 25 iunie" }], replyUpdates: [], mailboxUpdates: [] };
   await pollReplies(makeDeps(state, [], {
-    extractOrderInfo: async () => ({ orderNumber: "CMD42", deliveryTime: "25 iunie", deliveryEarliest: D25, deliveryLatest: D25, status: "extracted" as const }),
+    extractOrderInfo: async () => ({ orderNumber: "CMD42", deliveryTime: "25 iunie", deliveryEarliest: D25, deliveryLatest: D25, orderNumberGrounded: true, deliveryGrounded: true, status: "extracted" as const }),
   }));
   const update = state.replyUpdates.find((u) => u.id === "O2");
   assert.ok(update);
@@ -255,7 +282,7 @@ test("re-extraction keeps the status nudge spent when the delivery date is uncha
   };
   const state: State = { orders: [corrected], replies: [{ orderId: "O2", graphMessageId: "M3", body: "Confirmăm 20 iunie" }], replyUpdates: [], mailboxUpdates: [] };
   await pollReplies(makeDeps(state, [], {
-    extractOrderInfo: async () => ({ orderNumber: "CMD42", deliveryTime: "20 iunie", deliveryEarliest: new Date(D20), deliveryLatest: new Date(D20), status: "extracted" as const }),
+    extractOrderInfo: async () => ({ orderNumber: "CMD42", deliveryTime: "20 iunie", deliveryEarliest: new Date(D20), deliveryLatest: new Date(D20), orderNumberGrounded: true, deliveryGrounded: true, status: "extracted" as const }),
   }));
   const update = state.replyUpdates.find((u) => u.id === "O2");
   assert.ok(update);
@@ -281,7 +308,7 @@ test("extract phase skips closed orders", async () => {
   const closed = { ...PENDING, closedAt: new Date("2026-06-01T09:00:00Z") };
   const state: State = { orders: [closed], replies: [{ orderId: "O2", graphMessageId: "M2", body: "Comanda CMD42" }], replyUpdates: [], mailboxUpdates: [] };
   await pollReplies(makeDeps(state, [], {
-    extractOrderInfo: async () => ({ orderNumber: "CMD42", deliveryTime: null, deliveryEarliest: null, deliveryLatest: null, status: "extracted" as const }),
+    extractOrderInfo: async () => ({ orderNumber: "CMD42", deliveryTime: null, deliveryEarliest: null, deliveryLatest: null, orderNumberGrounded: true, deliveryGrounded: true, status: "extracted" as const }),
   }));
   assert.equal(state.replyUpdates.length, 0);
 });
@@ -327,7 +354,7 @@ test("extract phase tries PDFs before images", async () => {
   await pollReplies(makeDeps(state, [], {
     extractOrderInfo: async (source: any) => {
       if (source.kind === "binary") mimes.push(source.mimeType);
-      return { orderNumber: null, deliveryTime: null, deliveryEarliest: null, deliveryLatest: null, status: "needs_review" as const };
+      return { orderNumber: null, deliveryTime: null, deliveryEarliest: null, deliveryLatest: null, orderNumberGrounded: true, deliveryGrounded: true, status: "needs_review" as const };
     },
     listFileAttachments: async () => [
       { name: "foto.png", contentType: "image/png", bytes: new Uint8Array([1]) },

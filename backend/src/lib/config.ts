@@ -18,7 +18,11 @@ const envSchema = z.object({
   ENTRA_TENANT_ID: z.string().min(1),
   MICROSOFT_REDIRECT_URI: z.url(),
   MICROSOFT_SCOPES: z.string().min(1),
+  // LLM extraction: OpenAI is the primary provider, Gemini the fallback.
+  OPENAI_API_KEY: z.string().min(1),
+  OPENAI_MODEL: z.string().min(1).default("gpt-4o"),
   GOOGLE_LLM_API_KEY: z.string().min(1),
+  GEMINI_MODEL: z.string().min(1).default("gemini-2.5-flash"),
   FRONTEND_ORIGIN: z.url().optional(),
   POLL_INTERVAL_MS: z.string().optional(),
 });

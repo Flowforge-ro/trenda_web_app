@@ -2,6 +2,7 @@ import { prisma } from "../../prisma.js";
 import { decrypt, encrypt } from "../../lib/crypto.js";
 import { getAccessTokenFromRefreshToken, listMessagesSince, createAndSendMail, listFileAttachments } from "../../lib/microsoft.js";
 import { extractOrderInfo, mergeMissing, type ExtractionResult, type ExtractionSource } from "../../lib/extraction.js";
+import { scoreConfidence, needsReview } from "../../lib/confidence.js";
 import { getMailboxAccessToken } from "../../lib/mailbox-token.js";
 import { matchReply, normalizeMessageId } from "./matching.js";
 import { logError } from "../../lib/db-log.js";
@@ -132,7 +133,7 @@ async function extractForOrder(order: PendingOrder, getToken: GetToken, deps: Po
   const today = deps.now().toISOString().slice(0, 10);
   let result: ExtractionResult = reply?.body
     ? await deps.extractOrderInfo({ kind: "text", body: reply.body }, today)
-    : { orderNumber: null, deliveryTime: null, deliveryEarliest: null, deliveryLatest: null, status: "needs_review" };
+    : { orderNumber: null, deliveryTime: null, deliveryEarliest: null, deliveryLatest: null, orderNumberGrounded: true, deliveryGrounded: true, status: "needs_review" };
 
   // The token is only needed for attachment fallback; fetch it lazily so a
   // text-only extraction never costs a refresh, and a failed refresh still
@@ -165,12 +166,18 @@ async function extractForOrder(order: PendingOrder, getToken: GetToken, deps: Po
     deliveryTime: order.deliveryTime,
     deliveryEarliest: order.deliveryEarliest,
     deliveryLatest: order.deliveryLatest,
+    orderNumberGrounded: true,
+    deliveryGrounded: true,
     status: "needs_review",
   });
 
   // A changed delivery date re-arms the one-time "Status?" nudge.
   const dateChanged =
     (result.deliveryEarliest?.getTime() ?? null) !== (order.deliveryEarliest?.getTime() ?? null);
+
+  // Deterministic per-field confidence gates the auto-extracted status: a present
+  // but implausible or ungrounded value still goes to human review.
+  const confidence = scoreConfidence(result, today);
 
   await deps.prisma.order.update({
     where: { id: order.id },
@@ -179,7 +186,10 @@ async function extractForOrder(order: PendingOrder, getToken: GetToken, deps: Po
       deliveryTime: result.deliveryTime,
       deliveryEarliest: result.deliveryEarliest,
       deliveryLatest: result.deliveryLatest,
-      replyStatus: result.status,
+      replyStatus: needsReview(confidence) ? "needs_review" : "extracted",
+      orderNumberConfidence: confidence.orderNumber,
+      deliveryConfidence: confidence.delivery,
+      reviewReasons: confidence.reasons.length ? confidence.reasons.join("\n") : null,
       ...(dateChanged ? { statusRequestSentAt: null } : {}),
     },
   });

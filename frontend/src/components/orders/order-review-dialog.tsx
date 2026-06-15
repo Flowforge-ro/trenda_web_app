@@ -23,6 +23,14 @@ function isoToDateInput(iso: string | null): string {
   return iso ? iso.slice(0, 10) : "";
 }
 
+function LowConfidenceMark() {
+  return (
+    <span className="ml-1.5 rounded-sm bg-warning/10 px-1 text-[10px] font-medium text-warning">
+      de verificat
+    </span>
+  );
+}
+
 function AttachmentView({ orderId, att }: { orderId: string; att: ReviewAttachment }) {
   const url = attachmentUrl(orderId, att.id);
   const type = att.contentType ?? "";
@@ -94,7 +102,7 @@ export function OrderReviewDialog({ order }: { order: Order }) {
         render={
           <button
             type="button"
-            className="inline-flex items-center rounded-full bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning hover:bg-warning/20"
+            className="inline-flex h-7 cursor-pointer items-center justify-center rounded-md border border-warning/30 bg-warning/10 px-2.5 text-xs font-medium text-warning shadow-sm transition-colors hover:bg-warning/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warning/40"
           />
         }
       >
@@ -111,6 +119,17 @@ export function OrderReviewDialog({ order }: { order: Order }) {
           <p className="text-sm text-error">Nu s-a putut încărca răspunsul.</p>
         ) : (
           <div className="space-y-4">
+            {data.reasons.length > 0 ? (
+              <div className="rounded-md border border-warning/30 bg-warning/10 p-3 text-xs text-warning">
+                <p className="font-medium">De verificat:</p>
+                <ul className="mt-1 list-disc pl-4">
+                  {data.reasons.map((r) => (
+                    <li key={r}>{r}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
             <div className="text-xs text-muted-foreground">
               <div>De la: {data.reply.fromEmail}</div>
               <div>Data: {new Date(data.reply.receivedDateTime).toLocaleString("ro-RO")}</div>
@@ -132,7 +151,10 @@ export function OrderReviewDialog({ order }: { order: Order }) {
 
             <div className="space-y-3 border-t border-gray-200 pt-3">
               <div className="space-y-1">
-                <Label htmlFor="orderNumber">Număr comandă</Label>
+                <Label htmlFor="orderNumber">
+                  Număr comandă
+                  {data.confidence.orderNumber === "low" ? <LowConfidenceMark /> : null}
+                </Label>
                 <Input
                   id="orderNumber"
                   value={orderNumber}
@@ -141,7 +163,10 @@ export function OrderReviewDialog({ order }: { order: Order }) {
               </div>
               <div className="flex gap-3">
                 <div className="flex-1 space-y-1">
-                  <Label htmlFor="earliest">Livrare (de la)</Label>
+                  <Label htmlFor="earliest">
+                    Livrare (de la)
+                    {data.confidence.delivery === "low" ? <LowConfidenceMark /> : null}
+                  </Label>
                   <Input
                     id="earliest"
                     type="date"
@@ -150,7 +175,10 @@ export function OrderReviewDialog({ order }: { order: Order }) {
                   />
                 </div>
                 <div className="flex-1 space-y-1">
-                  <Label htmlFor="latest">Livrare (până la)</Label>
+                  <Label htmlFor="latest">
+                    Livrare (până la)
+                    {data.confidence.delivery === "low" ? <LowConfidenceMark /> : null}
+                  </Label>
                   <Input
                     id="latest"
                     type="date"

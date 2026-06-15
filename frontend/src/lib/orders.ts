@@ -156,6 +156,11 @@ export interface OrderReview {
     deliveryEarliest: string | null;
     deliveryLatest: string | null;
   };
+  confidence: {
+    orderNumber: "high" | "low";
+    delivery: "high" | "low";
+  };
+  reasons: string[];
 }
 
 export interface SaveReviewPayload {

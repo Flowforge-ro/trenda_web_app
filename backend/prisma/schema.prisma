@@ -72,6 +72,9 @@ model Order {
   internetMessageId   String?
   emailStatus         String       @default("trimis")
   replyStatus         String       @default("awaiting_reply")
+  orderNumberConfidence String?    // "high" | "low" — deterministic extraction confidence
+  deliveryConfidence    String?    // "high" | "low"
+  reviewReasons         String?    // newline-joined Romanian reasons shown in the review UI
   createdAt           DateTime     @default(now())
   updatedAt           DateTime     @updatedAt
   replies             OrderReply[]

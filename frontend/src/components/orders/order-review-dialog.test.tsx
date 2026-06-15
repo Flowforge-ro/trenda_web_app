@@ -41,6 +41,8 @@ const REVIEW: OrderReview = {
     deliveryEarliest: "2026-06-20T00:00:00.000Z",
     deliveryLatest: "2026-06-21T00:00:00.000Z",
   },
+  confidence: { orderNumber: "high", delivery: "high" },
+  reasons: [],
 };
 
 type ReviewResult = { data?: OrderReview; isLoading: boolean; isError: boolean };
@@ -140,5 +142,18 @@ describe("OrderReviewDialog", () => {
     const { user } = setup({ data: REVIEW, isLoading: false, isError: false });
     await openDialog(user);
     expect(screen.getByRole("button", { name: /Salvează/i })).toBeDisabled();
+  });
+
+  it("shows the reasons banner and a low-confidence marker", async () => {
+    const review: OrderReview = {
+      ...REVIEW,
+      confidence: { orderNumber: "low", delivery: "high" },
+      reasons: ["Numărul comenzii nu apare în email"],
+    };
+    const { user } = setup({ data: review, isLoading: false, isError: false });
+    await openDialog(user);
+    expect(screen.getByText("De verificat:")).toBeInTheDocument();
+    expect(screen.getByText("Numărul comenzii nu apare în email")).toBeInTheDocument();
+    expect(screen.getAllByText("de verificat").length).toBeGreaterThan(0);
   });
 });

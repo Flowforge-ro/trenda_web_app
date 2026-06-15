@@ -19,6 +19,9 @@ const orderRow = {
   deliveryTime: null,
   deliveryEarliest: null,
   deliveryLatest: null,
+  orderNumberConfidence: "low",
+  deliveryConfidence: "high",
+  reviewReasons: "Numărul comenzii nu apare în email",
   replies: [reply],
 };
 
@@ -49,6 +52,25 @@ test("getOrderReview returns reply, attachment meta, and current fields", async 
   assert.ok(result);
   assert.equal(result!.reply.fromEmail, "supplier@ex.ro");
   assert.deepEqual(result!.attachments, [{ id: "A1", name: "po.pdf", contentType: "application/pdf", size: 10 }]);
+});
+
+test("getOrderReview exposes stored confidence and reasons", async () => {
+  const result = await getOrderReview("O1", "O1", makeDeps());
+  assert.ok(result);
+  assert.equal(result!.confidence.orderNumber, "low");
+  assert.equal(result!.confidence.delivery, "high");
+  assert.deepEqual(result!.reasons, ["Numărul comenzii nu apare în email"]);
+});
+
+test("getOrderReview defaults missing confidence to high (legacy orders)", async () => {
+  const deps = makeDeps();
+  deps.prisma.order.findFirst = (async () => ({
+    id: "O1", orgId: "O1", mailboxId: "M1", orderNumber: "C-1",
+    deliveryTime: null, deliveryEarliest: null, deliveryLatest: null, replies: [reply],
+  })) as any;
+  const result = await getOrderReview("O1", "O1", deps);
+  assert.equal(result!.confidence.orderNumber, "high");
+  assert.deepEqual(result!.reasons, []);
 });
 
 test("getOrderReview returns null for an order outside the org", async () => {
@@ -101,6 +123,10 @@ test("saveOrderReview sets fields, mirrors a single date, and clears needs_revie
   assert.equal(updateData.orderNumber, "C-123");
   assert.equal(updateData.replyStatus, "extracted");
   assert.deepEqual(updateData.deliveryLatest, new Date("2026-06-10"));
+  // Human-verified: confidence reset.
+  assert.equal(updateData.orderNumberConfidence, "high");
+  assert.equal(updateData.deliveryConfidence, "high");
+  assert.equal(updateData.reviewReasons, null);
 });
 
 test("saveOrderReview returns null for an order outside the org", async () => {
