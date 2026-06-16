@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,7 +7,7 @@ import {
   Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
 import { useCreateOrder } from "@/lib/orders";
-import { useMailboxes } from "@/lib/mailboxes";
+import { useMailboxes, type Mailbox } from "@/lib/mailboxes";
 
 interface NewOrderForm {
   emailFurnizor: string;
@@ -20,17 +20,31 @@ const emptyForm: NewOrderForm = { emailFurnizor: "", serieSasiu: "", piesa: "", 
 
 export function NewOrderDialog() {
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState<NewOrderForm>(emptyForm);
-  const createOrder = useCreateOrder();
   const { data: mailboxes = [] } = useMailboxes();
   const vendorMailboxes = mailboxes.filter((m) => m.type === "vendor_facing");
 
-  // Default to the only vendor mailbox when the dialog opens.
-  useEffect(() => {
-    if (open && !form.mailboxId && vendorMailboxes.length === 1) {
-      setForm((prev) => ({ ...prev, mailboxId: vendorMailboxes[0].id }));
-    }
-  }, [open, vendorMailboxes, form.mailboxId]);
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger render={<Button className="hover:shadow-lg" />}>
+        <Plus />
+        Comandă nouă
+      </DialogTrigger>
+      <DialogContent>
+        {/* Mounted only while open, so each open starts from a fresh form
+            (default mailbox seeded below) and closing discards edits. */}
+        <NewOrderForm vendorMailboxes={vendorMailboxes} onClose={() => setOpen(false)} />
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function NewOrderForm({ vendorMailboxes, onClose }: { vendorMailboxes: Mailbox[]; onClose: () => void }) {
+  const createOrder = useCreateOrder();
+  // Default to the only vendor mailbox; seeded at mount (dialog open).
+  const [form, setForm] = useState<NewOrderForm>(() => ({
+    ...emptyForm,
+    mailboxId: vendorMailboxes.length === 1 ? vendorMailboxes[0].id : "",
+  }));
 
   function update<K extends keyof NewOrderForm>(key: K, value: string) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -41,20 +55,13 @@ export function NewOrderDialog() {
     createOrder.mutate(form, {
       onSuccess: ({ emailSent }) => {
         if (!emailSent) alert("Comanda a fost salvată, dar emailul nu a putut fi trimis.");
-        setForm(emptyForm);
-        setOpen(false);
+        onClose();
       },
     });
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button className="hover:shadow-lg" />}>
-        <Plus />
-        Comandă nouă
-      </DialogTrigger>
-      <DialogContent>
-        <form onSubmit={handleSubmit}>
+    <form onSubmit={handleSubmit}>
           <DialogHeader>
             <DialogTitle>Comandă nouă</DialogTitle>
             <DialogDescription>Completează detaliile comenzii de piese.</DialogDescription>
@@ -104,7 +111,5 @@ export function NewOrderDialog() {
             </Button>
           </DialogFooter>
         </form>
-      </DialogContent>
-    </Dialog>
   );
 }

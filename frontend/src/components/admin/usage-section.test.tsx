@@ -32,7 +32,9 @@ beforeEach(() => {
 describe("UsageSection", () => {
   it("renders overall totals and a per-org row", () => {
     render(<UsageSection />);
-    expect(screen.getByText("$0.0600")).toBeInTheDocument();
+    // $0.0600 appears twice: the overall "Cost estimat" total card and the
+    // single org's row (one org, so its cost equals the total).
+    expect(screen.getAllByText("$0.0600")).toHaveLength(2);
     expect(screen.getByText("Org One")).toBeInTheDocument();
     expect(screen.getByText("Cost estimat")).toBeInTheDocument();
   });

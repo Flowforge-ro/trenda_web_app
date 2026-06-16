@@ -80,11 +80,12 @@ describe("OrderReviewDialog", () => {
     expect(screen.getByText(/Se încarcă/i)).toBeInTheDocument();
   });
 
-  it("shows an error and disables save when the review fails to load", async () => {
+  it("shows an error and offers no save when the review fails to load", async () => {
     const { user } = setup({ isLoading: false, isError: true });
     await openDialog(user);
     expect(screen.getByText(/Nu s-a putut încărca răspunsul/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Salvează/i })).toBeDisabled();
+    // The review form (and its Salvează button) only mounts once data loads.
+    expect(screen.queryByRole("button", { name: /Salvează/i })).not.toBeInTheDocument();
   });
 
   it("renders the reply and pre-fills the form from current values", async () => {

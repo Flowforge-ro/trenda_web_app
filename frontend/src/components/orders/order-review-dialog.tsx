@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,6 +16,7 @@ import {
   useSaveReview,
   attachmentUrl,
   type Order,
+  type OrderReview,
   type ReviewAttachment,
 } from "@/lib/orders";
 
@@ -58,43 +59,6 @@ function AttachmentView({ orderId, att }: { orderId: string; att: ReviewAttachme
 export function OrderReviewDialog({ order }: { order: Order }) {
   const [open, setOpen] = useState(false);
   const { data, isLoading, isError } = useOrderReview(order.id, open);
-  const save = useSaveReview();
-
-  const [orderNumber, setorderNumber] = useState("");
-  const [earliest, setEarliest] = useState("");
-  const [latest, setLatest] = useState("");
-
-  useEffect(() => {
-    if (data) {
-      setorderNumber(data.current.orderNumber ?? "");
-      setEarliest(isoToDateInput(data.current.deliveryEarliest));
-      setLatest(isoToDateInput(data.current.deliveryLatest));
-    }
-  }, [data]);
-
-  // Discard unsaved edits when the dialog closes, so a reopen (served from
-  // React Query cache) shows server values, not the previous session's input.
-  useEffect(() => {
-    if (!open) {
-      setorderNumber("");
-      setEarliest("");
-      setLatest("");
-    }
-  }, [open]);
-
-  function handleSave() {
-    save.mutate(
-      {
-        id: order.id,
-        payload: {
-          orderNumber: orderNumber.trim() || null,
-          deliveryEarliest: earliest || null,
-          deliveryLatest: latest || null,
-        },
-      },
-      { onSuccess: () => setOpen(false) }
-    );
-  }
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -114,11 +78,52 @@ export function OrderReviewDialog({ order }: { order: Order }) {
         </DialogHeader>
 
         {isLoading ? (
-          <p className="text-sm text-muted-foreground">Se încarcă…</p>
+          <>
+            <p className="text-sm text-muted-foreground">Se încarcă…</p>
+            <DialogFooter>
+              <DialogClose render={<Button variant="outline" />}>Anulează</DialogClose>
+            </DialogFooter>
+          </>
         ) : isError || !data ? (
-          <p className="text-sm text-error">Nu s-a putut încărca răspunsul.</p>
+          <>
+            <p className="text-sm text-error">Nu s-a putut încărca răspunsul.</p>
+            <DialogFooter>
+              <DialogClose render={<Button variant="outline" />}>Anulează</DialogClose>
+            </DialogFooter>
+          </>
         ) : (
-          <div className="space-y-4">
+          <ReviewForm order={order} data={data} onClose={() => setOpen(false)} />
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ReviewForm({ order, data, onClose }: { order: Order; data: OrderReview; onClose: () => void }) {
+  const save = useSaveReview();
+  // Seeded from the fetched review at mount. The dialog unmounts this on close,
+  // so a reopen (served from React Query cache) restarts from server values.
+  const [orderNumber, setorderNumber] = useState(data.current.orderNumber ?? "");
+  const [earliest, setEarliest] = useState(isoToDateInput(data.current.deliveryEarliest));
+  const [latest, setLatest] = useState(isoToDateInput(data.current.deliveryLatest));
+
+  function handleSave() {
+    save.mutate(
+      {
+        id: order.id,
+        payload: {
+          orderNumber: orderNumber.trim() || null,
+          deliveryEarliest: earliest || null,
+          deliveryLatest: latest || null,
+        },
+      },
+      { onSuccess: onClose }
+    );
+  }
+
+  return (
+    <>
+      <div className="space-y-4">
             {data.reasons.length > 0 ? (
               <div className="rounded-md border border-warning/30 bg-warning/10 p-3 text-xs text-warning">
                 <p className="font-medium">De verificat:</p>
@@ -191,20 +196,13 @@ export function OrderReviewDialog({ order }: { order: Order }) {
                 <p className="text-xs text-error">Salvarea a eșuat.</p>
               ) : null}
             </div>
-          </div>
-        )}
-
-        <DialogFooter>
-          <DialogClose render={<Button variant="outline" />}>Anulează</DialogClose>
-          <Button
-            type="button"
-            disabled={save.isPending || isLoading || isError || !data}
-            onClick={handleSave}
-          >
-            Salvează
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      </div>
+      <DialogFooter>
+        <DialogClose render={<Button variant="outline" />}>Anulează</DialogClose>
+        <Button type="button" disabled={save.isPending} onClick={handleSave}>
+          Salvează
+        </Button>
+      </DialogFooter>
+    </>
   );
 }
