@@ -15,8 +15,7 @@ import {
 } from "../../lib/appointment-extraction.js";
 import { renderMissingFields } from "../../lib/template.js";
 import { logError } from "../../lib/db-log.js";
-import { recordUsage, estimateCostUsd } from "../../lib/usage.js";
-import type { LlmUsage } from "../../lib/usage.js";
+import { recordUsage, recordLlmUsage } from "../../lib/usage.js";
 
 export interface ClientPollDeps {
   prisma: typeof prisma;
@@ -43,19 +42,6 @@ const defaultDeps: ClientPollDeps = {
   recordUsage,
   now: () => new Date(),
 };
-
-async function meterLlm(deps: ClientPollDeps, orgId: string, usage: LlmUsage | undefined): Promise<void> {
-  if (!usage) return;
-  await deps.recordUsage({
-    orgId,
-    kind: "llm",
-    provider: usage.provider,
-    model: usage.model,
-    promptTokens: usage.inputTokens,
-    completionTokens: usage.outputTokens,
-    costUsd: estimateCostUsd(usage.model, usage.inputTokens, usage.outputTokens),
-  });
-}
 
 const OVERLAP_MS = 2 * 60 * 1000;
 
@@ -148,7 +134,7 @@ async function processMessage(
 
   if (!existing) {
     const result = await deps.extractAppointment(message.body.content, fields, today, { classify: true });
-    await meterLlm(deps, mailbox.orgId, result.usage);
+    await recordLlmUsage(mailbox.orgId, result.usage, deps.recordUsage);
     // Classification outcome: appointment vs junk (other).
     await deps.recordUsage({ orgId: mailbox.orgId, kind: "classification", outcome: result.intent });
     if (result.intent === "other") return; // ignored entirely (spec decision)
@@ -174,7 +160,7 @@ async function processMessage(
 
   // Known thread: extraction only (no intent), merge corrections over stored.
   const result = await deps.extractAppointment(message.body.content, fields, today, { classify: false });
-  await meterLlm(deps, mailbox.orgId, result.usage);
+  await recordLlmUsage(mailbox.orgId, result.usage, deps.recordUsage);
   const merged = mergeFields(existing.fields as Record<string, string | null>, result.fields);
   const missing = missingRequired(fields, merged);
   const wasComplete = existing.status === "complete";

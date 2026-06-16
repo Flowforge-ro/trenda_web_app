@@ -63,18 +63,23 @@ export async function recordUsage(event: UsageEventInput, deps: UsageDeps = defa
   }
 }
 
-/** Record an LLM call's token usage + estimated cost for an org. */
-export async function recordLlmUsage(orgId: string, usage: LlmUsage, deps?: UsageDeps): Promise<void> {
-  await recordUsage(
-    {
-      orgId,
-      kind: "llm",
-      provider: usage.provider,
-      model: usage.model,
-      promptTokens: usage.inputTokens,
-      completionTokens: usage.outputTokens,
-      costUsd: estimateCostUsd(usage.model, usage.inputTokens, usage.outputTokens),
-    },
-    deps
-  );
+/** Function shape of recordUsage, so callers can inject a test/DI fake. */
+export type RecordUsageFn = (event: UsageEventInput) => Promise<void>;
+
+/** Record an LLM call's token usage + estimated cost for an org. Best-effort. */
+export async function recordLlmUsage(
+  orgId: string,
+  usage: LlmUsage | undefined,
+  record: RecordUsageFn = recordUsage,
+): Promise<void> {
+  if (!usage) return;
+  await record({
+    orgId,
+    kind: "llm",
+    provider: usage.provider,
+    model: usage.model,
+    promptTokens: usage.inputTokens,
+    completionTokens: usage.outputTokens,
+    costUsd: estimateCostUsd(usage.model, usage.inputTokens, usage.outputTokens),
+  });
 }

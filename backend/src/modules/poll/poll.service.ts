@@ -3,8 +3,7 @@ import { decrypt, encrypt } from "../../lib/crypto.js";
 import { getAccessTokenFromRefreshToken, listMessagesSince, createAndSendMail, listFileAttachments } from "../../lib/microsoft.js";
 import { extractOrderInfo, mergeMissing, type ExtractionResult, type ExtractionSource } from "../../lib/extraction.js";
 import { scoreConfidence, needsReview } from "../../lib/confidence.js";
-import { recordUsage, estimateCostUsd } from "../../lib/usage.js";
-import type { LlmUsage } from "../../lib/usage.js";
+import { recordUsage, recordLlmUsage } from "../../lib/usage.js";
 import { getMailboxAccessToken } from "../../lib/mailbox-token.js";
 import { matchReply, normalizeMessageId } from "./matching.js";
 import { logError } from "../../lib/db-log.js";
@@ -35,20 +34,6 @@ const defaultDeps: PollDeps = {
   recordUsage,
   now: () => new Date(),
 };
-
-/** Record an LLM call's token usage + estimated cost against an org. */
-async function meterLlm(deps: PollDeps, orgId: string, usage: LlmUsage | undefined): Promise<void> {
-  if (!usage) return;
-  await deps.recordUsage({
-    orgId,
-    kind: "llm",
-    provider: usage.provider,
-    model: usage.model,
-    promptTokens: usage.inputTokens,
-    completionTokens: usage.outputTokens,
-    costUsd: estimateCostUsd(usage.model, usage.inputTokens, usage.outputTokens),
-  });
-}
 
 const OVERLAP_MS = 2 * 60 * 1000;
 // Orders older than this stop being matched against incoming mail, so the
@@ -152,7 +137,7 @@ async function extractForOrder(order: PendingOrder, getToken: GetToken, deps: Po
   let result: ExtractionResult = reply?.body
     ? await deps.extractOrderInfo({ kind: "text", body: reply.body }, today)
     : { orderNumber: null, deliveryTime: null, deliveryEarliest: null, deliveryLatest: null, orderNumberGrounded: true, deliveryGrounded: true, status: "needs_review" };
-  await meterLlm(deps, order.orgId, result.usage);
+  await recordLlmUsage(order.orgId, result.usage, deps.recordUsage);
 
   // The token is only needed for attachment fallback; fetch it lazily so a
   // text-only extraction never costs a refresh, and a failed refresh still
@@ -174,7 +159,7 @@ async function extractForOrder(order: PendingOrder, getToken: GetToken, deps: Po
       .sort((x, y) => Number(y.mime === "application/pdf") - Number(x.mime === "application/pdf"));
     for (const { a, mime } of sources) {
       const attResult = await deps.extractOrderInfo({ kind: "binary", bytes: a.bytes, mimeType: mime! }, today);
-      await meterLlm(deps, order.orgId, attResult.usage);
+      await recordLlmUsage(order.orgId, attResult.usage, deps.recordUsage);
       result = mergeMissing(result, attResult);
       if (result.status === "extracted") break;
     }
