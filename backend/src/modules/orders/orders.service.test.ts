@@ -26,6 +26,7 @@ function makeDeps(overrides: Partial<OrderDeps> = {}): OrderDeps {
     getAccessTokenFromRefreshToken: async () => ({ accessToken: "AT" }),
     createAndSendMail: async () => ({ internetMessageId: "<id@x>" }),
     renderStatusRequest: () => "BODY",
+    recordUsage: (async () => {}) as any,
     ...overrides,
   };
 }

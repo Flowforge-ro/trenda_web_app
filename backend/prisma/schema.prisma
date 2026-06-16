@@ -10,13 +10,15 @@ datasource db {
 model Organization {
   id          String    @id @default(cuid())
   name        String
-  // Migration pending — applied locally via `db push` (migration history diverged); run `prisma migrate dev` before deploy.
   suspendedAt DateTime? // non-null = suspended: users lose all API access incl. login
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
-  users     User[]
-  mailboxes Mailbox[]
-  orders    Order[]
+  users                   User[]
+  mailboxes               Mailbox[]
+  orders                  Order[]
+  appointmentFieldConfigs AppointmentFieldConfig[]
+  appointments            Appointment[]
+  usageEvents             UsageEvent[]
 }
 
 model User {
@@ -49,6 +51,7 @@ model Mailbox {
   createdAt             DateTime     @default(now())
   updatedAt             DateTime     @updatedAt
   orders                Order[]
+  appointments          Appointment[]
 }
 
 model Order {
@@ -72,11 +75,13 @@ model Order {
   internetMessageId   String?
   emailStatus         String       @default("trimis")
   replyStatus         String       @default("awaiting_reply")
+  orderNumberConfidence String?    // "high" | "low" — deterministic extraction confidence
+  deliveryConfidence    String?    // "high" | "low"
+  reviewReasons         String?    // newline-joined Romanian reasons shown in the review UI
   createdAt           DateTime     @default(now())
   updatedAt           DateTime     @updatedAt
   replies             OrderReply[]
 
-  // Migration pending — added on a machine without Postgres; run `prisma migrate dev` before deploy.
   @@index([orgId, createdAt, id]) // listOrders cursor pagination
   @@index([replyStatus]) // poll extract phase
 }
@@ -94,7 +99,6 @@ model OrderReply {
   body              String?
   createdAt         DateTime @default(now())
 
-  // Migration pending — see note on Order.
   @@index([orderId, receivedDateTime]) // per-order reply lookups + sort
 }
 
@@ -116,4 +120,54 @@ model Log {
   @@index([level])
   @@index([source])
   @@index([requestId])
+}
+
+model UsageEvent {
+  id               String       @id @default(cuid())
+  orgId            String
+  org              Organization @relation(fields: [orgId], references: [id])
+  kind             String // "llm" | "email_read" | "email_write" | "classification"
+  provider         String? // "openai" | "gemini"
+  model            String?
+  promptTokens     Int          @default(0)
+  completionTokens Int          @default(0)
+  costUsd          Float        @default(0)
+  emails           Int          @default(0) // count for email_read / email_write
+  outcome          String? // classification: "appointment" | "other"
+  createdAt        DateTime     @default(now())
+
+  @@index([orgId, createdAt])
+}
+
+model AppointmentFieldConfig {
+  id          String       @id @default(cuid())
+  orgId       String
+  org         Organization @relation(fields: [orgId], references: [id])
+  key         String
+  label       String
+  description String
+  required    Boolean      @default(true)
+  sortOrder   Int          @default(0)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@unique([orgId, key])
+}
+
+model Appointment {
+  id             String       @id @default(cuid())
+  orgId          String
+  org            Organization @relation(fields: [orgId], references: [id])
+  mailboxId      String
+  mailbox        Mailbox      @relation(fields: [mailboxId], references: [id])
+  customerEmail  String
+  conversationId String
+  status         String       @default("collecting") // collecting | complete
+  fields         Json         @default("{}")
+  lastMessageAt  DateTime
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([mailboxId, conversationId])
+  @@index([orgId, createdAt, id])
 }

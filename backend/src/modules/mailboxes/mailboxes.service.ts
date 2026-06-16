@@ -26,6 +26,14 @@ export interface ConnectInput {
 
 export async function connectMailbox(input: ConnectInput, deps: MailboxDeps = defaultDeps) {
   const graphUser = await deps.getGraphUser(input.accessToken);
+  // microsoftId is globally unique: never let one org reclaim another org's mailbox.
+  const existing = await deps.prisma.mailbox.findUnique({
+    where: { microsoftId: graphUser.id },
+    select: { orgId: true },
+  });
+  if (existing && existing.orgId !== input.orgId) {
+    return { error: "claimed" as const };
+  }
   const email = graphUser.mail || graphUser.userPrincipalName;
   const encryptedRefreshToken = deps.encrypt(input.refreshToken);
   return deps.prisma.mailbox.upsert({

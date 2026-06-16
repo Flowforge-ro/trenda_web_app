@@ -11,8 +11,20 @@ const VALID = {
   ENTRA_TENANT_ID: "tenant",
   MICROSOFT_REDIRECT_URI: "http://localhost:3000/auth/microsoft/callback",
   MICROSOFT_SCOPES: "openid profile offline_access",
+  OPENAI_API_KEY: "openai-key",
   GOOGLE_LLM_API_KEY: "gemini-key",
 };
+
+test("validateEnv defaults the LLM models", () => {
+  const config = validateEnv(VALID);
+  assert.equal(config.OPENAI_MODEL, "gpt-4o");
+  assert.equal(config.GEMINI_MODEL, "gemini-2.5-flash");
+});
+
+test("validateEnv requires OPENAI_API_KEY", () => {
+  const { OPENAI_API_KEY: _omitted, ...rest } = VALID;
+  assert.throws(() => validateEnv(rest), /OPENAI_API_KEY/);
+});
 
 test("validateEnv accepts a complete env and defaults PORT to 3000", () => {
   const config = validateEnv(VALID);

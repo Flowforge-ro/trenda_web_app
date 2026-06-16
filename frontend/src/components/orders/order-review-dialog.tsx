@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,11 +16,20 @@ import {
   useSaveReview,
   attachmentUrl,
   type Order,
+  type OrderReview,
   type ReviewAttachment,
 } from "@/lib/orders";
 
 function isoToDateInput(iso: string | null): string {
   return iso ? iso.slice(0, 10) : "";
+}
+
+function LowConfidenceMark() {
+  return (
+    <span className="ml-1.5 rounded-sm bg-warning/10 px-1 text-[10px] font-medium text-warning">
+      de verificat
+    </span>
+  );
 }
 
 function AttachmentView({ orderId, att }: { orderId: string; att: ReviewAttachment }) {
@@ -50,43 +59,6 @@ function AttachmentView({ orderId, att }: { orderId: string; att: ReviewAttachme
 export function OrderReviewDialog({ order }: { order: Order }) {
   const [open, setOpen] = useState(false);
   const { data, isLoading, isError } = useOrderReview(order.id, open);
-  const save = useSaveReview();
-
-  const [orderNumber, setorderNumber] = useState("");
-  const [earliest, setEarliest] = useState("");
-  const [latest, setLatest] = useState("");
-
-  useEffect(() => {
-    if (data) {
-      setorderNumber(data.current.orderNumber ?? "");
-      setEarliest(isoToDateInput(data.current.deliveryEarliest));
-      setLatest(isoToDateInput(data.current.deliveryLatest));
-    }
-  }, [data]);
-
-  // Discard unsaved edits when the dialog closes, so a reopen (served from
-  // React Query cache) shows server values, not the previous session's input.
-  useEffect(() => {
-    if (!open) {
-      setorderNumber("");
-      setEarliest("");
-      setLatest("");
-    }
-  }, [open]);
-
-  function handleSave() {
-    save.mutate(
-      {
-        id: order.id,
-        payload: {
-          orderNumber: orderNumber.trim() || null,
-          deliveryEarliest: earliest || null,
-          deliveryLatest: latest || null,
-        },
-      },
-      { onSuccess: () => setOpen(false) }
-    );
-  }
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -94,7 +66,7 @@ export function OrderReviewDialog({ order }: { order: Order }) {
         render={
           <button
             type="button"
-            className="inline-flex items-center rounded-full bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning hover:bg-warning/20"
+            className="inline-flex h-7 cursor-pointer items-center justify-center rounded-md border border-warning/30 bg-warning/10 px-2.5 text-xs font-medium text-warning shadow-sm transition-colors hover:bg-warning/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warning/40"
           />
         }
       >
@@ -106,11 +78,63 @@ export function OrderReviewDialog({ order }: { order: Order }) {
         </DialogHeader>
 
         {isLoading ? (
-          <p className="text-sm text-muted-foreground">Se încarcă…</p>
+          <>
+            <p className="text-sm text-muted-foreground">Se încarcă…</p>
+            <DialogFooter>
+              <DialogClose render={<Button variant="outline" />}>Anulează</DialogClose>
+            </DialogFooter>
+          </>
         ) : isError || !data ? (
-          <p className="text-sm text-error">Nu s-a putut încărca răspunsul.</p>
+          <>
+            <p className="text-sm text-error">Nu s-a putut încărca răspunsul.</p>
+            <DialogFooter>
+              <DialogClose render={<Button variant="outline" />}>Anulează</DialogClose>
+            </DialogFooter>
+          </>
         ) : (
-          <div className="space-y-4">
+          <ReviewForm order={order} data={data} onClose={() => setOpen(false)} />
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ReviewForm({ order, data, onClose }: { order: Order; data: OrderReview; onClose: () => void }) {
+  const save = useSaveReview();
+  // Seeded from the fetched review at mount. The dialog unmounts this on close,
+  // so a reopen (served from React Query cache) restarts from server values.
+  const [orderNumber, setorderNumber] = useState(data.current.orderNumber ?? "");
+  const [earliest, setEarliest] = useState(isoToDateInput(data.current.deliveryEarliest));
+  const [latest, setLatest] = useState(isoToDateInput(data.current.deliveryLatest));
+
+  function handleSave() {
+    save.mutate(
+      {
+        id: order.id,
+        payload: {
+          orderNumber: orderNumber.trim() || null,
+          deliveryEarliest: earliest || null,
+          deliveryLatest: latest || null,
+        },
+      },
+      { onSuccess: onClose }
+    );
+  }
+
+  return (
+    <>
+      <div className="space-y-4">
+            {data.reasons.length > 0 ? (
+              <div className="rounded-md border border-warning/30 bg-warning/10 p-3 text-xs text-warning">
+                <p className="font-medium">De verificat:</p>
+                <ul className="mt-1 list-disc pl-4">
+                  {data.reasons.map((r) => (
+                    <li key={r}>{r}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
             <div className="text-xs text-muted-foreground">
               <div>De la: {data.reply.fromEmail}</div>
               <div>Data: {new Date(data.reply.receivedDateTime).toLocaleString("ro-RO")}</div>
@@ -132,7 +156,10 @@ export function OrderReviewDialog({ order }: { order: Order }) {
 
             <div className="space-y-3 border-t border-gray-200 pt-3">
               <div className="space-y-1">
-                <Label htmlFor="orderNumber">Număr comandă</Label>
+                <Label htmlFor="orderNumber">
+                  Număr comandă
+                  {data.confidence.orderNumber === "low" ? <LowConfidenceMark /> : null}
+                </Label>
                 <Input
                   id="orderNumber"
                   value={orderNumber}
@@ -141,7 +168,10 @@ export function OrderReviewDialog({ order }: { order: Order }) {
               </div>
               <div className="flex gap-3">
                 <div className="flex-1 space-y-1">
-                  <Label htmlFor="earliest">Livrare (de la)</Label>
+                  <Label htmlFor="earliest">
+                    Livrare (de la)
+                    {data.confidence.delivery === "low" ? <LowConfidenceMark /> : null}
+                  </Label>
                   <Input
                     id="earliest"
                     type="date"
@@ -150,7 +180,10 @@ export function OrderReviewDialog({ order }: { order: Order }) {
                   />
                 </div>
                 <div className="flex-1 space-y-1">
-                  <Label htmlFor="latest">Livrare (până la)</Label>
+                  <Label htmlFor="latest">
+                    Livrare (până la)
+                    {data.confidence.delivery === "low" ? <LowConfidenceMark /> : null}
+                  </Label>
                   <Input
                     id="latest"
                     type="date"
@@ -163,20 +196,13 @@ export function OrderReviewDialog({ order }: { order: Order }) {
                 <p className="text-xs text-error">Salvarea a eșuat.</p>
               ) : null}
             </div>
-          </div>
-        )}
-
-        <DialogFooter>
-          <DialogClose render={<Button variant="outline" />}>Anulează</DialogClose>
-          <Button
-            type="button"
-            disabled={save.isPending || isLoading || isError || !data}
-            onClick={handleSave}
-          >
-            Salvează
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      </div>
+      <DialogFooter>
+        <DialogClose render={<Button variant="outline" />}>Anulează</DialogClose>
+        <Button type="button" disabled={save.isPending} onClick={handleSave}>
+          Salvează
+        </Button>
+      </DialogFooter>
+    </>
   );
 }

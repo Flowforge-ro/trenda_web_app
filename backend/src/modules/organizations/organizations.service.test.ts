@@ -1,6 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createOrganization, listOrganizations, type OrgDeps } from "./organizations.service.js";
+import { createOrganization, listOrganizations, DEFAULT_APPOINTMENT_FIELDS, type OrgDeps } from "./organizations.service.js";
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let lastSeededFields: any[] = [];
 
 function makeDeps(over: Partial<OrgDeps> = {}): OrgDeps {
   return {
@@ -10,6 +13,7 @@ function makeDeps(over: Partial<OrgDeps> = {}): OrgDeps {
         fn({
           organization: { create: async ({ data }: any) => ({ id: "O1", name: data.name }) },
           user: { create: async ({ data }: any) => ({ id: "ADM1", ...data }) },
+          appointmentFieldConfig: { createMany: async ({ data }: any) => { lastSeededFields = data; return { count: data.length }; } },
         }),
       organization: {
         findMany: async () => [
@@ -32,6 +36,17 @@ test("createOrganization makes the org and its first admin", async () => {
   assert.equal(r.admin.role, "admin");
   assert.equal(r.admin.orgId, "O1");
   assert.equal(r.admin.passwordHash, "HASH");
+});
+
+test("createOrganization seeds the default appointment field config", async () => {
+  lastSeededFields = [];
+  await createOrganization(
+    { name: "Acme", admin: { email: "boss@acme.com", password: "pw", name: "Boss" } },
+    makeDeps()
+  );
+  assert.equal(lastSeededFields.length, DEFAULT_APPOINTMENT_FIELDS.length);
+  assert.deepEqual(lastSeededFields.map((f) => f.key), ["nume", "telefon", "serviciu", "dataDorita"]);
+  assert.ok(lastSeededFields.every((f) => f.orgId === "O1" && f.description.length > 0));
 });
 
 test("createOrganization rejects a duplicate admin email", async () => {

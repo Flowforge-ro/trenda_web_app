@@ -4,9 +4,10 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { useAuth } from "./lib/auth";
 import { LoginPage } from "./pages/login";
 import { OrdersPage } from "./pages/orders";
+import { AppointmentsPage } from "./pages/appointments";
 import { PlaceholderPage } from "./pages/placeholder";
 import { SettingsPage } from "./pages/settings";
-import { AdminOrgsPage } from "./pages/admin-orgs";
+import { SuperadminPanel } from "./pages/admin";
 import { AppLayout } from "./components/layout/app-layout";
 
 const queryClient = new QueryClient();
@@ -20,7 +21,7 @@ function AuthGuard({ children }: { children: ReactNode }) {
     );
   }
   if (error || !user) return <Navigate to="/login" replace />;
-  if (user.role === "superadmin") return <AdminOrgsPage />;
+  if (user.role === "superadmin") return <SuperadminPanel />;
   return <>{children}</>;
 }
 
@@ -38,6 +39,7 @@ function App() {
             }
           >
             <Route path="/" element={<OrdersPage />} />
+            <Route path="/programari" element={<AppointmentsPage />} />
             <Route path="/piese" element={<PlaceholderPage title="Piese" />} />
             <Route path="/clienti" element={<PlaceholderPage title="Clienți" />} />
             <Route path="/rapoarte" element={<PlaceholderPage title="Rapoarte" />} />

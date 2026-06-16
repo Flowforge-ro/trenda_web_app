@@ -5,6 +5,7 @@ import { getAccessTokenFromRefreshToken, createAndSendMail } from "../../lib/mic
 import { renderStatusRequest } from "../../lib/template.js";
 import { getMailboxAccessToken } from "../../lib/mailbox-token.js";
 import { logError } from "../../lib/db-log.js";
+import { recordUsage } from "../../lib/usage.js";
 import type { Order } from "../../generated/prisma/client.js";
 
 export const orderInputSchema = z.object({
@@ -22,6 +23,7 @@ export interface OrderDeps {
   getAccessTokenFromRefreshToken: typeof getAccessTokenFromRefreshToken;
   createAndSendMail: typeof createAndSendMail;
   renderStatusRequest: typeof renderStatusRequest;
+  recordUsage: typeof recordUsage;
 }
 
 const defaultDeps: OrderDeps = {
@@ -31,6 +33,7 @@ const defaultDeps: OrderDeps = {
   getAccessTokenFromRefreshToken,
   createAndSendMail,
   renderStatusRequest,
+  recordUsage,
 };
 
 export async function createOrder(
@@ -66,7 +69,7 @@ export async function resendOrderEmail(orgId: string, orderId: string, deps: Ord
 }
 
 async function sendOrderEmail(
-  order: Pick<Order, "id" | "mailboxId" | "emailFurnizor" | "serieSasiu" | "piesa">,
+  order: Pick<Order, "id" | "orgId" | "mailboxId" | "emailFurnizor" | "serieSasiu" | "piesa">,
   deps: OrderDeps
 ) {
   try {
@@ -78,6 +81,7 @@ async function sendOrderEmail(
       subject: `Cerere comandă piesă — ${order.serieSasiu}`,
       body: deps.renderStatusRequest({ piesa: order.piesa, serieSasiu: order.serieSasiu }),
     });
+    await deps.recordUsage({ orgId: order.orgId, kind: "email_write", emails: 1 });
 
     const updated = await deps.prisma.order.update({
       where: { id: order.id },

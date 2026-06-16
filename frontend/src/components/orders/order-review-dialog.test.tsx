@@ -41,6 +41,8 @@ const REVIEW: OrderReview = {
     deliveryEarliest: "2026-06-20T00:00:00.000Z",
     deliveryLatest: "2026-06-21T00:00:00.000Z",
   },
+  confidence: { orderNumber: "high", delivery: "high" },
+  reasons: [],
 };
 
 type ReviewResult = { data?: OrderReview; isLoading: boolean; isError: boolean };
@@ -78,11 +80,12 @@ describe("OrderReviewDialog", () => {
     expect(screen.getByText(/Se încarcă/i)).toBeInTheDocument();
   });
 
-  it("shows an error and disables save when the review fails to load", async () => {
+  it("shows an error and offers no save when the review fails to load", async () => {
     const { user } = setup({ isLoading: false, isError: true });
     await openDialog(user);
     expect(screen.getByText(/Nu s-a putut încărca răspunsul/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Salvează/i })).toBeDisabled();
+    // The review form (and its Salvează button) only mounts once data loads.
+    expect(screen.queryByRole("button", { name: /Salvează/i })).not.toBeInTheDocument();
   });
 
   it("renders the reply and pre-fills the form from current values", async () => {
@@ -140,5 +143,18 @@ describe("OrderReviewDialog", () => {
     const { user } = setup({ data: REVIEW, isLoading: false, isError: false });
     await openDialog(user);
     expect(screen.getByRole("button", { name: /Salvează/i })).toBeDisabled();
+  });
+
+  it("shows the reasons banner and a low-confidence marker", async () => {
+    const review: OrderReview = {
+      ...REVIEW,
+      confidence: { orderNumber: "low", delivery: "high" },
+      reasons: ["Numărul comenzii nu apare în email"],
+    };
+    const { user } = setup({ data: review, isLoading: false, isError: false });
+    await openDialog(user);
+    expect(screen.getByText("De verificat:")).toBeInTheDocument();
+    expect(screen.getByText("Numărul comenzii nu apare în email")).toBeInTheDocument();
+    expect(screen.getAllByText("de verificat").length).toBeGreaterThan(0);
   });
 });

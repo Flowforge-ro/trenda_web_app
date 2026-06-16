@@ -2,7 +2,10 @@ import { prisma } from "../../prisma.js";
 import { decrypt, encrypt } from "../../lib/crypto.js";
 import { getAccessTokenFromRefreshToken, listMessagesSince, createAndSendMail, listFileAttachments } from "../../lib/microsoft.js";
 import { extractOrderInfo, mergeMissing, type ExtractionResult, type ExtractionSource } from "../../lib/extraction.js";
+import { scoreConfidence, needsReview } from "../../lib/confidence.js";
+import { recordUsage, recordLlmUsage } from "../../lib/usage.js";
 import { getMailboxAccessToken } from "../../lib/mailbox-token.js";
+import { fetchMailboxMessages } from "../../lib/mail-poll.js";
 import { matchReply, normalizeMessageId } from "./matching.js";
 import { logError } from "../../lib/db-log.js";
 import type { Order } from "../../generated/prisma/client.js";
@@ -16,6 +19,7 @@ export interface PollDeps {
   createAndSendMail: typeof createAndSendMail;
   extractOrderInfo: (source: ExtractionSource, today: string) => Promise<ExtractionResult>;
   listFileAttachments: typeof listFileAttachments;
+  recordUsage: typeof recordUsage;
   now: () => Date;
 }
 
@@ -28,10 +32,10 @@ const defaultDeps: PollDeps = {
   createAndSendMail,
   extractOrderInfo,
   listFileAttachments,
+  recordUsage,
   now: () => new Date(),
 };
 
-const OVERLAP_MS = 2 * 60 * 1000;
 // Orders older than this stop being matched against incoming mail, so the
 // per-poll matching set stays bounded even when nobody closes their orders.
 const MATCH_WINDOW_MS = 60 * 24 * 60 * 60 * 1000;
@@ -93,12 +97,12 @@ async function ingestReplies(deps: PollDeps, getToken: GetToken): Promise<void> 
   }
 }
 
-type PendingOrder = Pick<Order, "id" | "mailboxId" | "orderNumber" | "deliveryTime" | "deliveryEarliest" | "deliveryLatest">;
+type PendingOrder = Pick<Order, "id" | "orgId" | "mailboxId" | "orderNumber" | "deliveryTime" | "deliveryEarliest" | "deliveryLatest">;
 
 async function extractPending(deps: PollDeps, getToken: GetToken): Promise<void> {
   const pending = (await deps.prisma.order.findMany({
     where: { replyStatus: "reply_received", closedAt: null, org: { suspendedAt: null } },
-    select: { id: true, mailboxId: true, orderNumber: true, deliveryTime: true, deliveryEarliest: true, deliveryLatest: true },
+    select: { id: true, orgId: true, mailboxId: true, orderNumber: true, deliveryTime: true, deliveryEarliest: true, deliveryLatest: true },
   }));
   if (pending.length === 0) return;
 
@@ -132,7 +136,8 @@ async function extractForOrder(order: PendingOrder, getToken: GetToken, deps: Po
   const today = deps.now().toISOString().slice(0, 10);
   let result: ExtractionResult = reply?.body
     ? await deps.extractOrderInfo({ kind: "text", body: reply.body }, today)
-    : { orderNumber: null, deliveryTime: null, deliveryEarliest: null, deliveryLatest: null, status: "needs_review" };
+    : { orderNumber: null, deliveryTime: null, deliveryEarliest: null, deliveryLatest: null, orderNumberGrounded: true, deliveryGrounded: true, status: "needs_review" };
+  await recordLlmUsage(order.orgId, result.usage, deps.recordUsage);
 
   // The token is only needed for attachment fallback; fetch it lazily so a
   // text-only extraction never costs a refresh, and a failed refresh still
@@ -153,7 +158,9 @@ async function extractForOrder(order: PendingOrder, getToken: GetToken, deps: Po
       .filter((x) => x.mime !== null)
       .sort((x, y) => Number(y.mime === "application/pdf") - Number(x.mime === "application/pdf"));
     for (const { a, mime } of sources) {
-      result = mergeMissing(result, await deps.extractOrderInfo({ kind: "binary", bytes: a.bytes, mimeType: mime! }, today));
+      const attResult = await deps.extractOrderInfo({ kind: "binary", bytes: a.bytes, mimeType: mime! }, today);
+      await recordLlmUsage(order.orgId, attResult.usage, deps.recordUsage);
+      result = mergeMissing(result, attResult);
       if (result.status === "extracted") break;
     }
   }
@@ -165,12 +172,18 @@ async function extractForOrder(order: PendingOrder, getToken: GetToken, deps: Po
     deliveryTime: order.deliveryTime,
     deliveryEarliest: order.deliveryEarliest,
     deliveryLatest: order.deliveryLatest,
+    orderNumberGrounded: true,
+    deliveryGrounded: true,
     status: "needs_review",
   });
 
   // A changed delivery date re-arms the one-time "Status?" nudge.
   const dateChanged =
     (result.deliveryEarliest?.getTime() ?? null) !== (order.deliveryEarliest?.getTime() ?? null);
+
+  // Deterministic per-field confidence gates the auto-extracted status: a present
+  // but implausible or ungrounded value still goes to human review.
+  const confidence = scoreConfidence(result, today);
 
   await deps.prisma.order.update({
     where: { id: order.id },
@@ -179,18 +192,21 @@ async function extractForOrder(order: PendingOrder, getToken: GetToken, deps: Po
       deliveryTime: result.deliveryTime,
       deliveryEarliest: result.deliveryEarliest,
       deliveryLatest: result.deliveryLatest,
-      replyStatus: result.status,
+      replyStatus: needsReview(confidence) ? "needs_review" : "extracted",
+      orderNumberConfidence: confidence.orderNumber,
+      deliveryConfidence: confidence.delivery,
+      reviewReasons: confidence.reasons.length ? confidence.reasons.join("\n") : null,
       ...(dateChanged ? { statusRequestSentAt: null } : {}),
     },
   });
 }
 
-type DueOrder = Pick<Order, "id" | "mailboxId" | "emailFurnizor" | "serieSasiu" | "deliveryEarliest">;
+type DueOrder = Pick<Order, "id" | "orgId" | "mailboxId" | "emailFurnizor" | "serieSasiu" | "deliveryEarliest">;
 
 async function requestStatusUpdates(deps: PollDeps, getToken: GetToken): Promise<void> {
   const candidates = (await deps.prisma.order.findMany({
     where: { deliveryEarliest: { not: null }, statusRequestSentAt: null, closedAt: null, org: { suspendedAt: null } },
-    select: { id: true, mailboxId: true, emailFurnizor: true, serieSasiu: true, deliveryEarliest: true },
+    select: { id: true, orgId: true, mailboxId: true, emailFurnizor: true, serieSasiu: true, deliveryEarliest: true },
   }));
 
   const now = deps.now();
@@ -206,6 +222,7 @@ async function requestStatusUpdates(deps: PollDeps, getToken: GetToken): Promise
         subject: `Status comandă — ${order.serieSasiu}`,
         body: "Status?",
       });
+      await deps.recordUsage({ orgId: order.orgId, kind: "email_write", emails: 1 });
       await deps.prisma.order.update({ where: { id: order.id }, data: { statusRequestSentAt: now } });
     } catch (err) {
       // Leave statusRequestSentAt null so the next poll retries this order.
@@ -220,14 +237,12 @@ async function pollMailbox(mailboxId: string, orders: MatchableOrder[], deps: Po
 
   const mailbox = await deps.prisma.mailbox.findUnique({
     where: { id: mailboxId },
-    select: { lastPolledAt: true },
+    select: { orgId: true, lastPolledAt: true },
   });
 
   const oldestCreatedAt = orders.reduce((min, o) => (o.createdAt < min ? o.createdAt : min), orders[0].createdAt);
   const base = mailbox?.lastPolledAt ?? oldestCreatedAt;
-  const sinceIso = new Date(base.getTime() - OVERLAP_MS).toISOString();
-
-  const messages = await deps.listMessagesSince(accessToken, sinceIso);
+  const { messages, newest } = await fetchMailboxMessages(deps, accessToken, base, mailbox?.orgId ?? null);
 
   const byMessageId = new Map<string, MatchableOrder>();
   for (const order of orders) {
@@ -258,12 +273,5 @@ async function pollMailbox(mailboxId: string, orders: MatchableOrder[], deps: Po
     ]);
   }
 
-  // Watermark from Graph's own timestamps: immune to server/Graph clock skew, and
-  // correct under page-cap truncation (messages arrive oldest-first, so anything
-  // not fetched is newer than the watermark and re-queried next poll).
-  const newest = messages.reduce<Date | null>((max, m) => {
-    const d = new Date(m.receivedDateTime);
-    return !max || d > max ? d : max;
-  }, null);
   await deps.prisma.mailbox.update({ where: { id: mailboxId }, data: { lastPolledAt: newest ?? deps.now() } });
 }

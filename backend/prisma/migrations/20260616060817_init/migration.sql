@@ -59,6 +59,9 @@ CREATE TABLE "Order" (
     "internetMessageId" TEXT,
     "emailStatus" TEXT NOT NULL DEFAULT 'trimis',
     "replyStatus" TEXT NOT NULL DEFAULT 'awaiting_reply',
+    "orderNumberConfidence" TEXT,
+    "deliveryConfidence" TEXT,
+    "reviewReasons" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -99,6 +102,54 @@ CREATE TABLE "Log" (
     CONSTRAINT "Log_pkey" PRIMARY KEY ("id")
 );
 
+-- CreateTable
+CREATE TABLE "UsageEvent" (
+    "id" TEXT NOT NULL,
+    "orgId" TEXT NOT NULL,
+    "kind" TEXT NOT NULL,
+    "provider" TEXT,
+    "model" TEXT,
+    "promptTokens" INTEGER NOT NULL DEFAULT 0,
+    "completionTokens" INTEGER NOT NULL DEFAULT 0,
+    "costUsd" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "emails" INTEGER NOT NULL DEFAULT 0,
+    "outcome" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "UsageEvent_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "AppointmentFieldConfig" (
+    "id" TEXT NOT NULL,
+    "orgId" TEXT NOT NULL,
+    "key" TEXT NOT NULL,
+    "label" TEXT NOT NULL,
+    "description" TEXT NOT NULL,
+    "required" BOOLEAN NOT NULL DEFAULT true,
+    "sortOrder" INTEGER NOT NULL DEFAULT 0,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "AppointmentFieldConfig_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "Appointment" (
+    "id" TEXT NOT NULL,
+    "orgId" TEXT NOT NULL,
+    "mailboxId" TEXT NOT NULL,
+    "customerEmail" TEXT NOT NULL,
+    "conversationId" TEXT NOT NULL,
+    "status" TEXT NOT NULL DEFAULT 'collecting',
+    "fields" JSONB NOT NULL DEFAULT '{}',
+    "lastMessageAt" TIMESTAMP(3) NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "Appointment_pkey" PRIMARY KEY ("id")
+);
+
 -- CreateIndex
 CREATE UNIQUE INDEX "User_email_key" ON "User"("email");
 
@@ -129,6 +180,18 @@ CREATE INDEX "Log_source_idx" ON "Log"("source");
 -- CreateIndex
 CREATE INDEX "Log_requestId_idx" ON "Log"("requestId");
 
+-- CreateIndex
+CREATE INDEX "UsageEvent_orgId_createdAt_idx" ON "UsageEvent"("orgId", "createdAt");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "AppointmentFieldConfig_orgId_key_key" ON "AppointmentFieldConfig"("orgId", "key");
+
+-- CreateIndex
+CREATE INDEX "Appointment_orgId_createdAt_id_idx" ON "Appointment"("orgId", "createdAt", "id");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Appointment_mailboxId_conversationId_key" ON "Appointment"("mailboxId", "conversationId");
+
 -- AddForeignKey
 ALTER TABLE "User" ADD CONSTRAINT "User_orgId_fkey" FOREIGN KEY ("orgId") REFERENCES "Organization"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
@@ -149,3 +212,15 @@ ALTER TABLE "Order" ADD CONSTRAINT "Order_createdByUserId_fkey" FOREIGN KEY ("cr
 
 -- AddForeignKey
 ALTER TABLE "OrderReply" ADD CONSTRAINT "OrderReply_orderId_fkey" FOREIGN KEY ("orderId") REFERENCES "Order"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "UsageEvent" ADD CONSTRAINT "UsageEvent_orgId_fkey" FOREIGN KEY ("orgId") REFERENCES "Organization"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "AppointmentFieldConfig" ADD CONSTRAINT "AppointmentFieldConfig_orgId_fkey" FOREIGN KEY ("orgId") REFERENCES "Organization"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Appointment" ADD CONSTRAINT "Appointment_orgId_fkey" FOREIGN KEY ("orgId") REFERENCES "Organization"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Appointment" ADD CONSTRAINT "Appointment_mailboxId_fkey" FOREIGN KEY ("mailboxId") REFERENCES "Mailbox"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
