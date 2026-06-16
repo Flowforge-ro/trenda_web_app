@@ -6,6 +6,7 @@ import {
   type GraphMessage,
 } from "../../lib/microsoft.js";
 import { getMailboxAccessToken } from "../../lib/mailbox-token.js";
+import { fetchMailboxMessages } from "../../lib/mail-poll.js";
 import { decrypt, encrypt } from "../../lib/crypto.js";
 import {
   extractAppointment,
@@ -43,7 +44,6 @@ const defaultDeps: ClientPollDeps = {
   now: () => new Date(),
 };
 
-const OVERLAP_MS = 2 * 60 * 1000;
 
 export async function pollClientMailboxes(deps: ClientPollDeps = defaultDeps): Promise<void> {
   const mailboxes = await deps.prisma.mailbox.findMany({
@@ -83,11 +83,7 @@ async function pollClientMailbox(mailbox: ClientMailbox, deps: ClientPollDeps): 
 
   // First poll starts at mailbox connection time: no historical backfill.
   const base = mailbox.lastPolledAt ?? mailbox.createdAt;
-  const sinceIso = new Date(base.getTime() - OVERLAP_MS).toISOString();
-  const messages = await deps.listMessagesSince(accessToken, sinceIso);
-  if (messages.length > 0) {
-    await deps.recordUsage({ orgId: mailbox.orgId, kind: "email_read", emails: messages.length });
-  }
+  const { messages, newest } = await fetchMailboxMessages(deps, accessToken, base, mailbox.orgId);
 
   for (const message of messages) {
     try {
@@ -97,10 +93,6 @@ async function pollClientMailbox(mailbox: ClientMailbox, deps: ClientPollDeps): 
     }
   }
 
-  const newest = messages.reduce<Date | null>((max, m) => {
-    const d = new Date(m.receivedDateTime);
-    return !max || d > max ? d : max;
-  }, null);
   await deps.prisma.mailbox.update({
     where: { id: mailbox.id },
     data: { lastPolledAt: newest ?? deps.now() },

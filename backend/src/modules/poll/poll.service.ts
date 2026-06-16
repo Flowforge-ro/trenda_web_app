@@ -5,6 +5,7 @@ import { extractOrderInfo, mergeMissing, type ExtractionResult, type ExtractionS
 import { scoreConfidence, needsReview } from "../../lib/confidence.js";
 import { recordUsage, recordLlmUsage } from "../../lib/usage.js";
 import { getMailboxAccessToken } from "../../lib/mailbox-token.js";
+import { fetchMailboxMessages } from "../../lib/mail-poll.js";
 import { matchReply, normalizeMessageId } from "./matching.js";
 import { logError } from "../../lib/db-log.js";
 import type { Order } from "../../generated/prisma/client.js";
@@ -35,7 +36,6 @@ const defaultDeps: PollDeps = {
   now: () => new Date(),
 };
 
-const OVERLAP_MS = 2 * 60 * 1000;
 // Orders older than this stop being matched against incoming mail, so the
 // per-poll matching set stays bounded even when nobody closes their orders.
 const MATCH_WINDOW_MS = 60 * 24 * 60 * 60 * 1000;
@@ -242,12 +242,7 @@ async function pollMailbox(mailboxId: string, orders: MatchableOrder[], deps: Po
 
   const oldestCreatedAt = orders.reduce((min, o) => (o.createdAt < min ? o.createdAt : min), orders[0].createdAt);
   const base = mailbox?.lastPolledAt ?? oldestCreatedAt;
-  const sinceIso = new Date(base.getTime() - OVERLAP_MS).toISOString();
-
-  const messages = await deps.listMessagesSince(accessToken, sinceIso);
-  if (messages.length > 0 && mailbox?.orgId) {
-    await deps.recordUsage({ orgId: mailbox.orgId, kind: "email_read", emails: messages.length });
-  }
+  const { messages, newest } = await fetchMailboxMessages(deps, accessToken, base, mailbox?.orgId ?? null);
 
   const byMessageId = new Map<string, MatchableOrder>();
   for (const order of orders) {
@@ -278,12 +273,5 @@ async function pollMailbox(mailboxId: string, orders: MatchableOrder[], deps: Po
     ]);
   }
 
-  // Watermark from Graph's own timestamps: immune to server/Graph clock skew, and
-  // correct under page-cap truncation (messages arrive oldest-first, so anything
-  // not fetched is newer than the watermark and re-queried next poll).
-  const newest = messages.reduce<Date | null>((max, m) => {
-    const d = new Date(m.receivedDateTime);
-    return !max || d > max ? d : max;
-  }, null);
   await deps.prisma.mailbox.update({ where: { id: mailboxId }, data: { lastPolledAt: newest ?? deps.now() } });
 }
