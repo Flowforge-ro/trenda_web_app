@@ -117,7 +117,8 @@ function openaiContent(source: ExtractionSource, today: string): OpenAI.Chat.Com
 }
 
 let openaiClient: OpenAI | null = null;
-function getOpenAI(): OpenAI {
+/** Lazily-initialised shared OpenAI client (reused by appointment-extraction). */
+export function getOpenAI(): OpenAI {
   return (openaiClient ??= new OpenAI({ apiKey: process.env.OPENAI_API_KEY }));
 }
 
