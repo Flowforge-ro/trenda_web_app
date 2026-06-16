@@ -1,6 +1,6 @@
 {
   "dependencies": {
-    "concurrently": "^10.0.0"
+    "concurrently": "^10.0.3"
   },
   "scripts": {
     "server": "cd backend && npm run dev",
