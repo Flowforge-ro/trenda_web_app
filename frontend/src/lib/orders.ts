@@ -17,6 +17,8 @@ export interface Order {
   emailStatus: string;
   closedAt: string | null;
   createdAt: string;
+  registrationNumber: string | null;
+  offerPrice: string | null;
 }
 
 export interface NewOrderPayload {
@@ -24,6 +26,7 @@ export interface NewOrderPayload {
   chassisSeries: string;
   partCode: string;
   mailboxId: string;
+  registrationNumber?: string;
 }
 
 interface CreateOrderResult {
@@ -196,6 +199,40 @@ async function saveReview(args: { id: string; payload: SaveReviewPayload }): Pro
   });
   if (!res.ok) throw new Error("Salvarea a eșuat");
   return res.json();
+}
+
+async function acceptOffer(id: string): Promise<{ order: Order }> {
+  const res = await apiFetch(`/orders/${id}/accept-offer`, { method: "POST" });
+  if (!res.ok) throw new Error("Acceptarea ofertei a eșuat");
+  return res.json();
+}
+
+export function useAcceptOffer() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: acceptOffer,
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["orders"] });
+      logAction("order.offer.accept", { orderId: data.order.id });
+    },
+  });
+}
+
+async function rejectOffer(id: string): Promise<{ order: Order }> {
+  const res = await apiFetch(`/orders/${id}/reject-offer`, { method: "POST" });
+  if (!res.ok) throw new Error("Respingerea ofertei a eșuat");
+  return res.json();
+}
+
+export function useRejectOffer() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: rejectOffer,
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["orders"] });
+      logAction("order.offer.reject", { orderId: data.order.id });
+    },
+  });
 }
 
 export function useSaveReview() {
