@@ -126,9 +126,9 @@ describe("NewOrderDialog", () => {
     expect(mockMutate).toHaveBeenCalledOnce();
     expect(mockMutate).toHaveBeenCalledWith(
       {
-        emailFurnizor: "furnizor@test.ro",
-        serieSasiu: "WVWZZZ1KZAW000001",
-        piesa: "Filtru ulei",
+        vendorEmail: "furnizor@test.ro",
+        chassisSeries: "WVWZZZ1KZAW000001",
+        partCode: "Filtru ulei",
         mailboxId: "mb1",
       },
       expect.objectContaining({ onSuccess: expect.any(Function) })

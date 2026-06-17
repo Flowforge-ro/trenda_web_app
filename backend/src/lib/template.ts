@@ -4,8 +4,8 @@ import { dirname, join } from "node:path";
 
 export interface StatusRequestVars {
   [key: string]: string;
-  piesa: string;
-  serieSasiu: string;
+  partCode: string;
+  chassisSeries: string;
 }
 
 export function renderTemplate(

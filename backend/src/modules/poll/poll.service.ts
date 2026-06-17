@@ -201,12 +201,12 @@ async function extractForOrder(order: PendingOrder, getToken: GetToken, deps: Po
   });
 }
 
-type DueOrder = Pick<Order, "id" | "orgId" | "mailboxId" | "emailFurnizor" | "serieSasiu" | "deliveryEarliest">;
+type DueOrder = Pick<Order, "id" | "orgId" | "mailboxId" | "vendorEmail" | "chassisSeries" | "deliveryEarliest">;
 
 async function requestStatusUpdates(deps: PollDeps, getToken: GetToken): Promise<void> {
   const candidates = (await deps.prisma.order.findMany({
     where: { deliveryEarliest: { not: null }, statusRequestSentAt: null, closedAt: null, org: { suspendedAt: null } },
-    select: { id: true, orgId: true, mailboxId: true, emailFurnizor: true, serieSasiu: true, deliveryEarliest: true },
+    select: { id: true, orgId: true, mailboxId: true, vendorEmail: true, chassisSeries: true, deliveryEarliest: true },
   }));
 
   const now = deps.now();
@@ -218,8 +218,8 @@ async function requestStatusUpdates(deps: PollDeps, getToken: GetToken): Promise
       const accessToken = await getToken(order.mailboxId);
       if (!accessToken) continue;
       await deps.createAndSendMail(accessToken, {
-        to: order.emailFurnizor,
-        subject: `Status comandă — ${order.serieSasiu}`,
+        to: order.vendorEmail,
+        subject: `Status comandă — ${order.chassisSeries}`,
         body: "Status?",
       });
       await deps.recordUsage({ orgId: order.orgId, kind: "email_write", emails: 1 });

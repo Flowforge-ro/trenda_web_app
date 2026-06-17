@@ -10,13 +10,13 @@ import { useCreateOrder } from "@/lib/orders";
 import { useMailboxes, type Mailbox } from "@/lib/mailboxes";
 
 interface NewOrderForm {
-  emailFurnizor: string;
-  serieSasiu: string;
-  piesa: string;
+  vendorEmail: string;
+  chassisSeries: string;
+  partCode: string;
   mailboxId: string;
 }
 
-const emptyForm: NewOrderForm = { emailFurnizor: "", serieSasiu: "", piesa: "", mailboxId: "" };
+const emptyForm: NewOrderForm = { vendorEmail: "", chassisSeries: "", partCode: "", mailboxId: "" };
 
 export function NewOrderDialog() {
   const [open, setOpen] = useState(false);
@@ -90,16 +90,16 @@ function NewOrderForm({ vendorMailboxes, onClose }: { vendorMailboxes: Mailbox[]
               )}
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="emailFurnizor">Email furnizor</Label>
-              <Input id="emailFurnizor" type="email" required placeholder="furnizor@exemplu.ro" value={form.emailFurnizor} onChange={(e) => update("emailFurnizor", e.target.value)} />
+              <Label htmlFor="vendorEmail">Email furnizor</Label>
+              <Input id="vendorEmail" type="email" required placeholder="furnizor@exemplu.ro" value={form.vendorEmail} onChange={(e) => update("vendorEmail", e.target.value)} />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="serieSasiu">Serie sasiu</Label>
-              <Input id="serieSasiu" required placeholder="WVWZZZ1KZAW000001" value={form.serieSasiu} onChange={(e) => update("serieSasiu", e.target.value)} />
+              <Label htmlFor="chassisSeries">Serie sasiu</Label>
+              <Input id="chassisSeries" required placeholder="WVWZZZ1KZAW000001" value={form.chassisSeries} onChange={(e) => update("chassisSeries", e.target.value)} />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="piesa">Piesa</Label>
-              <Input id="piesa" required placeholder="Filtru ulei" value={form.piesa} onChange={(e) => update("piesa", e.target.value)} />
+              <Label htmlFor="partCode">Piesa</Label>
+              <Input id="partCode" required placeholder="Filtru ulei" value={form.partCode} onChange={(e) => update("partCode", e.target.value)} />
             </div>
           </div>
 

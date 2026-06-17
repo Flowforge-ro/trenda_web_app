@@ -62,9 +62,9 @@ model Order {
   mailbox             Mailbox      @relation(fields: [mailboxId], references: [id])
   createdByUserId     String
   createdBy           User         @relation("CreatedBy", fields: [createdByUserId], references: [id])
-  emailFurnizor       String
-  serieSasiu          String
-  piesa               String
+  vendorEmail         String
+  chassisSeries       String
+  partCode            String
   status              String       @default("În așteptare")
   orderNumber         String?
   deliveryTime        String?

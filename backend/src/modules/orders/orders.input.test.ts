@@ -4,9 +4,9 @@ import { orderInputSchema } from "./orders.service.js";
 
 test("orderInputSchema accepts a valid payload", () => {
   const r = orderInputSchema.safeParse({
-    emailFurnizor: "f@ex.ro",
-    serieSasiu: "WVW001",
-    piesa: "Filtru",
+    vendorEmail: "f@ex.ro",
+    chassisSeries: "WVW001",
+    partCode: "Filtru",
     mailboxId: "M1",
   });
   assert.equal(r.success, true);
@@ -14,35 +14,35 @@ test("orderInputSchema accepts a valid payload", () => {
 
 test("orderInputSchema rejects a malformed email", () => {
   const r = orderInputSchema.safeParse({
-    emailFurnizor: "not-an-email",
-    serieSasiu: "WVW001",
-    piesa: "Filtru",
+    vendorEmail: "not-an-email",
+    chassisSeries: "WVW001",
+    partCode: "Filtru",
     mailboxId: "M1",
   });
   assert.equal(r.success, false);
 });
 
-test("orderInputSchema rejects an empty piesa", () => {
+test("orderInputSchema rejects an empty partCode", () => {
   const r = orderInputSchema.safeParse({
-    emailFurnizor: "f@ex.ro",
-    serieSasiu: "WVW001",
-    piesa: "",
+    vendorEmail: "f@ex.ro",
+    chassisSeries: "WVW001",
+    partCode: "",
     mailboxId: "M1",
   });
   assert.equal(r.success, false);
 });
 
-test("orderInputSchema rejects an empty serieSasiu", () => {
+test("orderInputSchema rejects an empty chassisSeries", () => {
   const r = orderInputSchema.safeParse({
-    emailFurnizor: "f@ex.ro",
-    serieSasiu: "",
-    piesa: "Filtru",
+    vendorEmail: "f@ex.ro",
+    chassisSeries: "",
+    partCode: "Filtru",
     mailboxId: "M1",
   });
   assert.equal(r.success, false);
 });
 
 test("orderInputSchema rejects a missing mailboxId", () => {
-  const r = orderInputSchema.safeParse({ emailFurnizor: "f@ex.ro", serieSasiu: "WVW001", piesa: "Filtru" });
+  const r = orderInputSchema.safeParse({ vendorEmail: "f@ex.ro", chassisSeries: "WVW001", partCode: "Filtru" });
   assert.equal(r.success, false);
 });

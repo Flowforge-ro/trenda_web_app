@@ -207,7 +207,7 @@ test("extract phase leaves order at reply_received when the extractor throws", a
   assert.equal(state.replyUpdates.find((u) => u.id === "O2"), undefined);
 });
 
-const DUE_ORDER = { id: "O3", orgId: "ORG1", mailboxId: "M1", emailFurnizor: "f@ex.ro", serieSasiu: "WVW1", deliveryEarliest: new Date("2026-06-02T00:00:00.000Z"), statusRequestSentAt: null };
+const DUE_ORDER = { id: "O3", orgId: "ORG1", mailboxId: "M1", vendorEmail: "f@ex.ro", chassisSeries: "WVW1", deliveryEarliest: new Date("2026-06-02T00:00:00.000Z"), statusRequestSentAt: null };
 
 test("status phase emails the supplier from the order's mailbox when delivery is due", async () => {
   let sent: any;

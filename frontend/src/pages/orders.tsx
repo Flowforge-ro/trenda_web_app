@@ -145,9 +145,9 @@ export function OrdersPage() {
                   <TableCell className="px-4 py-3 font-medium text-foreground">
                     {o.orderNumber ?? "—"}
                   </TableCell>
-                  <TableCell className="px-4 py-3 text-foreground">{o.piesa}</TableCell>
+                  <TableCell className="px-4 py-3 text-foreground">{o.partCode}</TableCell>
                   <TableCell className="px-4 py-3 font-mono text-xs text-muted-foreground">
-                    {o.serieSasiu}
+                    {o.chassisSeries}
                   </TableCell>
                   <TableCell className="px-4 py-3">
                     <StatusCell order={o} />

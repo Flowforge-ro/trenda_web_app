@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createOrder, resendOrderEmail, listOrders, closeOrder, type OrderDeps } from "./orders.service.js";
 
-const input = { emailFurnizor: "f@ex.ro", serieSasiu: "WVW001", piesa: "Filtru", mailboxId: "M1" };
+const input = { vendorEmail: "f@ex.ro", chassisSeries: "WVW001", partCode: "Filtru", mailboxId: "M1" };
 
 function makeDeps(overrides: Partial<OrderDeps> = {}): OrderDeps {
   return {

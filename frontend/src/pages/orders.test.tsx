@@ -33,9 +33,9 @@ import { useOrders } from "@/lib/orders";
 function baseOrder(over: Partial<Order> = {}): Order {
   return {
     id: "O1",
-    emailFurnizor: "supplier@ex.ro",
-    serieSasiu: "WVWZZZ1KZAW000001",
-    piesa: "Filtru ulei",
+    vendorEmail: "supplier@ex.ro",
+    chassisSeries: "WVWZZZ1KZAW000001",
+    partCode: "Filtru ulei",
     status: "În așteptare",
     orderNumber: null,
     deliveryTime: null,
@@ -132,7 +132,7 @@ describe("OrdersPage", () => {
   it("renders the review dialog only for orders needing review", () => {
     setup([
       baseOrder({ id: "O1", replyStatus: "needs_review" }),
-      baseOrder({ id: "O2", piesa: "Altă piesă" }),
+      baseOrder({ id: "O2", partCode: "Altă piesă" }),
     ]);
     expect(screen.getByText("review:O1")).toBeInTheDocument();
     expect(screen.queryByText("review:O2")).not.toBeInTheDocument();
@@ -149,7 +149,7 @@ describe("OrdersPage", () => {
       data: {
         pages: [
           { orders: [baseOrder({ id: "O1" })], nextCursor: "c1" },
-          { orders: [baseOrder({ id: "O2", piesa: "Altă piesă" })], nextCursor: null },
+          { orders: [baseOrder({ id: "O2", partCode: "Altă piesă" })], nextCursor: null },
         ],
       },
     });

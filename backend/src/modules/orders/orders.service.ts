@@ -9,9 +9,9 @@ import { recordUsage } from "../../lib/usage.js";
 import type { Order } from "../../generated/prisma/client.js";
 
 export const orderInputSchema = z.object({
-  emailFurnizor: z.string().email(),
-  serieSasiu: z.string().min(1),
-  piesa: z.string().min(1),
+  vendorEmail: z.string().email(),
+  chassisSeries: z.string().min(1),
+  partCode: z.string().min(1),
   mailboxId: z.string().min(1),
 });
 export type OrderInput = z.infer<typeof orderInputSchema>;
@@ -53,9 +53,9 @@ export async function createOrder(
       orgId,
       createdByUserId: userId,
       mailboxId: mailbox.id,
-      emailFurnizor: input.emailFurnizor,
-      serieSasiu: input.serieSasiu,
-      piesa: input.piesa,
+      vendorEmail: input.vendorEmail,
+      chassisSeries: input.chassisSeries,
+      partCode: input.partCode,
       emailStatus: "in_curs",
     },
   });
@@ -69,7 +69,7 @@ export async function resendOrderEmail(orgId: string, orderId: string, deps: Ord
 }
 
 async function sendOrderEmail(
-  order: Pick<Order, "id" | "orgId" | "mailboxId" | "emailFurnizor" | "serieSasiu" | "piesa">,
+  order: Pick<Order, "id" | "orgId" | "mailboxId" | "vendorEmail" | "chassisSeries" | "partCode">,
   deps: OrderDeps
 ) {
   try {
@@ -77,9 +77,9 @@ async function sendOrderEmail(
     if (!accessToken) throw new Error("Mailbox has no usable token");
 
     const { internetMessageId } = await deps.createAndSendMail(accessToken, {
-      to: order.emailFurnizor,
-      subject: `Cerere comandă piesă — ${order.serieSasiu}`,
-      body: deps.renderStatusRequest({ piesa: order.piesa, serieSasiu: order.serieSasiu }),
+      to: order.vendorEmail,
+      subject: `Cerere comandă piesă — ${order.chassisSeries}`,
+      body: deps.renderStatusRequest({ partCode: order.partCode, chassisSeries: order.chassisSeries }),
     });
     await deps.recordUsage({ orgId: order.orgId, kind: "email_write", emails: 1 });
 

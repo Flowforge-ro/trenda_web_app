@@ -47,9 +47,9 @@ const fakeOrder = {
   orgId: ORG_ID,
   createdByUserId: memberUser.id,
   mailboxId: "mbox-1",
-  emailFurnizor: "vendor@example.com",
-  serieSasiu: "VIN001",
-  piesa: "Filtru",
+  vendorEmail: "vendor@example.com",
+  chassisSeries: "VIN001",
+  partCode: "Filtru",
   emailStatus: "trimis",
   internetMessageId: "msg-1",
   orderNumber: null,
@@ -134,7 +134,7 @@ test("POST /orders without a session returns 401", async () => {
   const res = await app.inject({
     method: "POST",
     url: "/orders",
-    payload: { emailFurnizor: "f@ex.ro", serieSasiu: "WVW001", piesa: "Filtru" },
+    payload: { vendorEmail: "f@ex.ro", chassisSeries: "WVW001", partCode: "Filtru" },
   });
   assert.equal(res.statusCode, 401);
 });
@@ -193,9 +193,9 @@ test("POST /orders as superadmin (no orgId) returns 403", async () => {
     url: "/orders",
     headers: { cookie: superadminCookie },
     payload: {
-      emailFurnizor: "v@ex.com",
-      serieSasiu: "VIN001",
-      piesa: "Filtru",
+      vendorEmail: "v@ex.com",
+      chassisSeries: "VIN001",
+      partCode: "Filtru",
       mailboxId: "mbox-1",
     },
   });
@@ -212,7 +212,7 @@ test("POST /orders with missing required fields returns 400", async () => {
     method: "POST",
     url: "/orders",
     headers: { cookie: memberCookie },
-    payload: { emailFurnizor: "not-an-email", serieSasiu: "", piesa: "" },
+    payload: { vendorEmail: "not-an-email", chassisSeries: "", partCode: "" },
   });
   assert.equal(res.statusCode, 400);
   const body = res.json();

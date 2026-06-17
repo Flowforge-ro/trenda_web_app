@@ -5,9 +5,9 @@ import { logAction } from "./logger";
 
 export interface Order {
   id: string;
-  emailFurnizor: string;
-  serieSasiu: string;
-  piesa: string;
+  vendorEmail: string;
+  chassisSeries: string;
+  partCode: string;
   status: string;
   orderNumber: string | null;
   deliveryTime: string | null;
@@ -20,9 +20,9 @@ export interface Order {
 }
 
 export interface NewOrderPayload {
-  emailFurnizor: string;
-  serieSasiu: string;
-  piesa: string;
+  vendorEmail: string;
+  chassisSeries: string;
+  partCode: string;
   mailboxId: string;
 }
 
