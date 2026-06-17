@@ -65,6 +65,8 @@ model Order {
   vendorEmail         String
   chassisSeries       String
   partCode            String
+  registrationNumber  String?
+  offerPrice          String?
   status              String       @default("În așteptare")
   orderNumber         String?
   deliveryTime        String?
