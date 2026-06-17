@@ -28,7 +28,7 @@ export interface OrderDeps {
   recordUsage: typeof recordUsage;
 }
 
-const defaultDeps: OrderDeps = {
+let defaultDeps: OrderDeps = {
   prisma,
   decrypt,
   encrypt,
@@ -38,6 +38,9 @@ const defaultDeps: OrderDeps = {
   renderOfferAcceptance,
   recordUsage,
 };
+
+/** Override deps in tests only. Call with the original object to restore. */
+export function setOrderDepsForTests(deps: OrderDeps) { defaultDeps = deps; }
 
 export async function createOrder(
   orgId: string,

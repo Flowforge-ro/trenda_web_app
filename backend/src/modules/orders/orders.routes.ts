@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from "fastify";
 import { requireRole } from "../../lib/auth-context.js";
-import { closeOrder, createOrder, listOrders, resendOrderEmail, orderInputSchema, listOrdersQuerySchema } from "./orders.service.js";
+import { acceptOffer, closeOrder, createOrder, listOrders, rejectOffer, resendOrderEmail, orderInputSchema, listOrdersQuerySchema } from "./orders.service.js";
 import { getOrderReview, getReviewAttachment, saveOrderReview, reviewSaveSchema } from "./review.service.js";
 
 export function contentDisposition(name: string): string {
@@ -45,6 +45,24 @@ export const ordersRoutes: FastifyPluginAsync = async (app) => {
     const { id } = request.params as { id: string };
     const order = await closeOrder(user.orgId, id);
     if (!order) return reply.status(404).send({ error: "Order not found" });
+    return reply.status(200).send({ order });
+  });
+
+  app.post("/orders/:id/accept-offer", async (request, reply) => {
+    const user = await requireRole("member", request, reply);
+    if (!user) return reply;
+    const { id } = request.params as { id: string };
+    const order = await acceptOffer(user.orgId, id);
+    if (!order) return reply.status(404).send({ error: "Order not found or not an offer" });
+    return reply.status(200).send({ order });
+  });
+
+  app.post("/orders/:id/reject-offer", async (request, reply) => {
+    const user = await requireRole("member", request, reply);
+    if (!user) return reply;
+    const { id } = request.params as { id: string };
+    const order = await rejectOffer(user.orgId, id);
+    if (!order) return reply.status(404).send({ error: "Order not found or not an offer" });
     return reply.status(200).send({ order });
   });
 
