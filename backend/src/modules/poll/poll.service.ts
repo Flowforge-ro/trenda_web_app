@@ -213,7 +213,7 @@ type DueOrder = Pick<Order, "id" | "orgId" | "mailboxId" | "vendorEmail" | "chas
 
 async function requestStatusUpdates(deps: PollDeps, getToken: GetToken): Promise<void> {
   const candidates = (await deps.prisma.order.findMany({
-    where: { deliveryEarliest: { not: null }, statusRequestSentAt: null, closedAt: null, org: { suspendedAt: null } },
+    where: { deliveryEarliest: { not: null }, statusRequestSentAt: null, closedAt: null, replyStatus: { not: "offer_pending" }, org: { suspendedAt: null } },
     select: { id: true, orgId: true, mailboxId: true, vendorEmail: true, chassisSeries: true, deliveryEarliest: true },
   }));
 

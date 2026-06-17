@@ -34,7 +34,8 @@ function makeDeps(state: State, messages: GraphMessage[], overrides: Partial<Pol
       order: {
         findMany: async ({ where }: any) =>
           state.orders.filter((o) => {
-            if (where?.replyStatus && o.replyStatus !== where.replyStatus) return false;
+            if (where?.replyStatus && typeof where.replyStatus === "string" && o.replyStatus !== where.replyStatus) return false;
+            if (where?.replyStatus?.not !== undefined && o.replyStatus === where.replyStatus.not) return false;
             if (where?.internetMessageId?.not === null && o.internetMessageId == null) return false;
             if (where?.createdAt?.gte && o.createdAt < where.createdAt.gte) return false;
             if (where?.closedAt === null && o.closedAt != null) return false;
@@ -393,6 +394,19 @@ test("extract phase does not refresh a token when the reply has no attachments",
   }));
   assert.equal(refreshes, 0);
   assert.ok(state.replyUpdates.find((u) => u.id === "O2"), "text-only extraction should still run");
+});
+
+test("offer_pending orders are not nudged even when delivery is near", async () => {
+  let called = false;
+  const offerPendingOrder = {
+    ...DUE_ORDER,
+    id: "O_OFFER",
+    replyStatus: "offer_pending",
+    statusRequestSentAt: null,
+  };
+  const state: State = { orders: [offerPendingOrder], replies: [], replyUpdates: [], mailboxUpdates: [] };
+  await pollReplies(makeDeps(state, [], { createAndSendMail: async () => { called = true; return { internetMessageId: "<x>" }; } }));
+  assert.equal(called, false, "offer_pending order must not receive a status nudge email");
 });
 
 test("extract phase tries PDFs before images", async () => {
