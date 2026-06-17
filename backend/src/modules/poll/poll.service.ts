@@ -1,7 +1,7 @@
 import { prisma } from "../../prisma.js";
 import { decrypt, encrypt } from "../../lib/crypto.js";
 import { getAccessTokenFromRefreshToken, listMessagesSince, createAndSendMail, listFileAttachments } from "../../lib/microsoft.js";
-import { extractOrderInfo, mergeMissing, type ExtractionResult, type ExtractionSource } from "../../lib/extraction.js";
+import { extractOrderInfo, mergeMissing, type ExtractionContext, type ExtractionResult, type ExtractionSource } from "../../lib/extraction.js";
 import { scoreConfidence, needsReview } from "../../lib/confidence.js";
 import { recordUsage, recordLlmUsage } from "../../lib/usage.js";
 import { getMailboxAccessToken } from "../../lib/mailbox-token.js";
@@ -17,7 +17,7 @@ export interface PollDeps {
   getAccessTokenFromRefreshToken: typeof getAccessTokenFromRefreshToken;
   listMessagesSince: typeof listMessagesSince;
   createAndSendMail: typeof createAndSendMail;
-  extractOrderInfo: (source: ExtractionSource, today: string) => Promise<ExtractionResult>;
+  extractOrderInfo: (source: ExtractionSource, today: string, ctx: ExtractionContext) => Promise<ExtractionResult>;
   listFileAttachments: typeof listFileAttachments;
   recordUsage: typeof recordUsage;
   now: () => Date;
@@ -97,12 +97,12 @@ async function ingestReplies(deps: PollDeps, getToken: GetToken): Promise<void> 
   }
 }
 
-type PendingOrder = Pick<Order, "id" | "orgId" | "mailboxId" | "orderNumber" | "deliveryTime" | "deliveryEarliest" | "deliveryLatest">;
+type PendingOrder = Pick<Order, "id" | "orgId" | "mailboxId" | "orderNumber" | "deliveryTime" | "deliveryEarliest" | "deliveryLatest" | "partCode">;
 
 async function extractPending(deps: PollDeps, getToken: GetToken): Promise<void> {
   const pending = (await deps.prisma.order.findMany({
     where: { replyStatus: "reply_received", closedAt: null, org: { suspendedAt: null } },
-    select: { id: true, orgId: true, mailboxId: true, orderNumber: true, deliveryTime: true, deliveryEarliest: true, deliveryLatest: true },
+    select: { id: true, orgId: true, mailboxId: true, orderNumber: true, deliveryTime: true, deliveryEarliest: true, deliveryLatest: true, partCode: true },
   }));
   if (pending.length === 0) return;
 
@@ -135,8 +135,8 @@ async function extractForOrder(order: PendingOrder, getToken: GetToken, deps: Po
 
   const today = deps.now().toISOString().slice(0, 10);
   let result: ExtractionResult = reply?.body
-    ? await deps.extractOrderInfo({ kind: "text", body: reply.body }, today)
-    : { orderNumber: null, deliveryTime: null, deliveryEarliest: null, deliveryLatest: null, orderNumberGrounded: true, deliveryGrounded: true, status: "needs_review" };
+    ? await deps.extractOrderInfo({ kind: "text", body: reply.body }, today, { partCode: order.partCode })
+    : { orderNumber: null, deliveryTime: null, deliveryEarliest: null, deliveryLatest: null, orderNumberGrounded: true, deliveryGrounded: true, status: "needs_review", isOffer: false, price: null };
   await recordLlmUsage(order.orgId, result.usage, deps.recordUsage);
 
   // The token is only needed for attachment fallback; fetch it lazily so a
@@ -158,7 +158,7 @@ async function extractForOrder(order: PendingOrder, getToken: GetToken, deps: Po
       .filter((x) => x.mime !== null)
       .sort((x, y) => Number(y.mime === "application/pdf") - Number(x.mime === "application/pdf"));
     for (const { a, mime } of sources) {
-      const attResult = await deps.extractOrderInfo({ kind: "binary", bytes: a.bytes, mimeType: mime! }, today);
+      const attResult = await deps.extractOrderInfo({ kind: "binary", bytes: a.bytes, mimeType: mime! }, today, { partCode: order.partCode });
       await recordLlmUsage(order.orgId, attResult.usage, deps.recordUsage);
       result = mergeMissing(result, attResult);
       if (result.status === "extracted") break;
@@ -175,6 +175,8 @@ async function extractForOrder(order: PendingOrder, getToken: GetToken, deps: Po
     orderNumberGrounded: true,
     deliveryGrounded: true,
     status: "needs_review",
+    isOffer: false,
+    price: null,
   });
 
   // A changed delivery date re-arms the one-time "Status?" nudge.
@@ -185,19 +187,25 @@ async function extractForOrder(order: PendingOrder, getToken: GetToken, deps: Po
   // but implausible or ungrounded value still goes to human review.
   const confidence = scoreConfidence(result, today);
 
+  const baseData = {
+    orderNumber: result.orderNumber,
+    deliveryTime: result.deliveryTime,
+    deliveryEarliest: result.deliveryEarliest,
+    deliveryLatest: result.deliveryLatest,
+    orderNumberConfidence: confidence.orderNumber,
+    deliveryConfidence: confidence.delivery,
+    reviewReasons: confidence.reasons.length ? confidence.reasons.join("\n") : null,
+  };
+
   await deps.prisma.order.update({
     where: { id: order.id },
-    data: {
-      orderNumber: result.orderNumber,
-      deliveryTime: result.deliveryTime,
-      deliveryEarliest: result.deliveryEarliest,
-      deliveryLatest: result.deliveryLatest,
-      replyStatus: needsReview(confidence) ? "needs_review" : "extracted",
-      orderNumberConfidence: confidence.orderNumber,
-      deliveryConfidence: confidence.delivery,
-      reviewReasons: confidence.reasons.length ? confidence.reasons.join("\n") : null,
-      ...(dateChanged ? { statusRequestSentAt: null } : {}),
-    },
+    data: result.isOffer
+      ? { ...baseData, offerPrice: result.price, replyStatus: "offer_pending" }
+      : {
+          ...baseData,
+          replyStatus: needsReview(confidence) ? "needs_review" : "extracted",
+          ...(dateChanged ? { statusRequestSentAt: null } : {}),
+        },
   });
 }
 

@@ -313,6 +313,29 @@ test("re-extraction keeps the status nudge spent when the delivery date is uncha
   assert.equal(update.statusRequestSentAt, undefined);
 });
 
+test("offer reply lands in offer_pending with price stored", async () => {
+  const pendingOffer = { ...PENDING, partCode: "PC-X1" };
+  const state: State = { orders: [pendingOffer], replies: [{ orderId: "O2", graphMessageId: "M2", body: "Oferta noastra: 99 EUR" }], replyUpdates: [], mailboxUpdates: [] };
+  await pollReplies(makeDeps(state, [], {
+    extractOrderInfo: async () => ({ orderNumber: "CMD42", deliveryTime: "20 iunie", deliveryEarliest: new Date("2026-06-20T00:00:00.000Z"), deliveryLatest: new Date("2026-06-20T00:00:00.000Z"), orderNumberGrounded: true, deliveryGrounded: true, status: "extracted" as const, isOffer: true, price: "99 EUR" }),
+  }));
+  const update = state.replyUpdates.find((u) => u.id === "O2");
+  assert.ok(update);
+  assert.equal(update.replyStatus, "offer_pending");
+  assert.equal(update.offerPrice, "99 EUR");
+});
+
+test("non-offer reply keeps the existing extracted/needs_review path", async () => {
+  const state: State = { orders: [PENDING], replies: [{ orderId: "O2", graphMessageId: "M2", body: "Comanda CMD42" }], replyUpdates: [], mailboxUpdates: [] };
+  await pollReplies(makeDeps(state, [], {
+    extractOrderInfo: async () => ({ orderNumber: "CMD42", deliveryTime: "20 iunie", deliveryEarliest: new Date("2026-06-20T00:00:00.000Z"), deliveryLatest: new Date("2026-06-20T00:00:00.000Z"), orderNumberGrounded: true, deliveryGrounded: true, status: "extracted" as const, isOffer: false, price: null }),
+  }));
+  const update = state.replyUpdates.find((u) => u.id === "O2");
+  assert.ok(update);
+  assert.equal(update.replyStatus, "extracted");
+  assert.ok(update.offerPrice === undefined || update.offerPrice === null);
+});
+
 test("ingest ignores orders older than the 60-day match window", async () => {
   const stale = { ...ORDER, createdAt: new Date("2026-03-01T08:00:00Z") };
   const state: State = { orders: [stale], replies: [], replyUpdates: [], mailboxUpdates: [] };
