@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { renderTemplate, renderMissingFields } from "./template.js";
+import { renderTemplate, renderMissingFields, renderOfferAcceptance } from "./template.js";
 
 test("renderTemplate substitutes known placeholders", () => {
   const out = renderTemplate("partCode {partCode}, sasiu {chassisSeries}.", {
@@ -16,6 +16,12 @@ test("renderTemplate leaves unknown placeholders intact", () => {
     chassisSeries: "Y",
   });
   assert.equal(out, "hi X {altceva}");
+});
+
+test("renderOfferAcceptance fills partCode and chassisSeries", () => {
+  const out = renderOfferAcceptance({ partCode: "ABC123", chassisSeries: "WVW000" });
+  assert.ok(out.includes("ABC123"));
+  assert.ok(out.includes("WVW000"));
 });
 
 test("renderMissingFields renders labels as a bulleted list", () => {
