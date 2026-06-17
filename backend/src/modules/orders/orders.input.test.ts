@@ -8,6 +8,7 @@ test("orderInputSchema accepts a valid payload", () => {
     chassisSeries: "WVW001",
     partCode: "Filtru",
     mailboxId: "M1",
+    registrationNumber: "B-123-XYZ",
   });
   assert.equal(r.success, true);
 });

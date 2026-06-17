@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createOrder, resendOrderEmail, listOrders, closeOrder, type OrderDeps } from "./orders.service.js";
+import { createOrder, resendOrderEmail, listOrders, closeOrder, acceptOffer, rejectOffer, type OrderDeps } from "./orders.service.js";
 
-const input = { vendorEmail: "f@ex.ro", chassisSeries: "WVW001", partCode: "Filtru", mailboxId: "M1" };
+const input = { vendorEmail: "f@ex.ro", chassisSeries: "WVW001", partCode: "Filtru", mailboxId: "M1", registrationNumber: "B-123-XYZ" };
 
 function makeDeps(overrides: Partial<OrderDeps> = {}): OrderDeps {
   return {
@@ -26,6 +26,7 @@ function makeDeps(overrides: Partial<OrderDeps> = {}): OrderDeps {
     getAccessTokenFromRefreshToken: async () => ({ accessToken: "AT" }),
     createAndSendMail: async () => ({ internetMessageId: "<id@x>" }),
     renderStatusRequest: () => "BODY",
+    renderOfferAcceptance: () => "OFFER_BODY",
     recordUsage: (async () => {}) as any,
     ...overrides,
   };
@@ -114,4 +115,89 @@ test("closeOrder keeps the original closedAt when already closed", async () => {
   const order = await closeOrder("O1", "X1", deps);
   assert.ok(order);
   assert.equal(order.closedAt, already);
+});
+
+test("acceptOffer emails vendor and sets accepted", async () => {
+  const sentTo: string[] = [];
+  const recordedKinds: string[] = [];
+  const deps = makeDeps({
+    prisma: {
+      mailbox: {
+        findFirst: async ({ where }: any) =>
+          where.id === "M1" && where.orgId === "O1" && where.type === "vendor_facing" ? { id: "M1" } : null,
+        findUnique: async () => ({ encryptedRefreshToken: "enc" }),
+        update: async () => ({}),
+      },
+      order: {
+        create: async ({ data }: any) => ({ id: "ord1", ...data }),
+        update: async ({ where, data }: any) => ({ id: where.id, mailboxId: "M1", ...data }),
+        findFirst: async ({ where }: any) =>
+          where.orgId === "O1"
+            ? { id: where.id, orgId: "O1", replyStatus: "offer_pending", ...input }
+            : null,
+        findMany: async ({ where }: any) => (where.orgId === "O1" ? [{ id: "O1" }] : []),
+      },
+    } as any,
+    createAndSendMail: async (_token: string, msg: any) => {
+      sentTo.push(msg.to);
+      return { internetMessageId: "<offer@x>" };
+    },
+    recordUsage: (async (args: any) => { recordedKinds.push(args.kind); }) as any,
+  });
+  const order = await acceptOffer("O1", "ord1", deps);
+  assert.ok(order);
+  assert.equal(sentTo[0], input.vendorEmail);
+  assert.equal(recordedKinds[0], "email_write");
+  assert.equal(order!.replyStatus, "accepted");
+});
+
+test("acceptOffer returns null when order is not offer_pending", async () => {
+  const deps = makeDeps({
+    prisma: {
+      mailbox: {
+        findFirst: async ({ where }: any) =>
+          where.id === "M1" && where.orgId === "O1" && where.type === "vendor_facing" ? { id: "M1" } : null,
+        findUnique: async () => ({ encryptedRefreshToken: "enc" }),
+        update: async () => ({}),
+      },
+      order: {
+        create: async ({ data }: any) => ({ id: "ord1", ...data }),
+        update: async () => { throw new Error("must not update"); },
+        findFirst: async ({ where }: any) =>
+          where.orgId === "O1"
+            ? { id: where.id, orgId: "O1", replyStatus: "extracted", ...input }
+            : null,
+        findMany: async ({ where }: any) => (where.orgId === "O1" ? [{ id: "O1" }] : []),
+      },
+    } as any,
+    createAndSendMail: async () => { throw new Error("must not send"); },
+  });
+  const result = await acceptOffer("O1", "ord1", deps);
+  assert.equal(result, null);
+});
+
+test("rejectOffer closes the order and marks rejected", async () => {
+  const deps = makeDeps({
+    prisma: {
+      mailbox: {
+        findFirst: async ({ where }: any) =>
+          where.id === "M1" && where.orgId === "O1" && where.type === "vendor_facing" ? { id: "M1" } : null,
+        findUnique: async () => ({ encryptedRefreshToken: "enc" }),
+        update: async () => ({}),
+      },
+      order: {
+        create: async ({ data }: any) => ({ id: "ord1", ...data }),
+        update: async ({ where, data }: any) => ({ id: where.id, mailboxId: "M1", ...data }),
+        findFirst: async ({ where }: any) =>
+          where.orgId === "O1"
+            ? { id: where.id, orgId: "O1", replyStatus: "offer_pending", closedAt: null, ...input }
+            : null,
+        findMany: async ({ where }: any) => (where.orgId === "O1" ? [{ id: "O1" }] : []),
+      },
+    } as any,
+  });
+  const order = await rejectOffer("O1", "ord1", deps);
+  assert.ok(order);
+  assert.equal(order!.replyStatus, "rejected");
+  assert.ok(order!.closedAt instanceof Date);
 });
