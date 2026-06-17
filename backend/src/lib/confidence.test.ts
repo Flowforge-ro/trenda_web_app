@@ -14,6 +14,8 @@ function result(over: Partial<ExtractionResult> = {}): ExtractionResult {
     orderNumberGrounded: true,
     deliveryGrounded: true,
     status: "extracted",
+    isOffer: false,
+    price: null,
     ...over,
   };
 }
