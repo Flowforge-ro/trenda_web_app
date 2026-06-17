@@ -26,7 +26,7 @@ export interface NewOrderPayload {
   chassisSeries: string;
   partCode: string;
   mailboxId: string;
-  registrationNumber?: string;
+  registrationNumber: string;
 }
 
 interface CreateOrderResult {

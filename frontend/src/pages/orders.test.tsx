@@ -22,6 +22,9 @@ vi.mock("@/components/orders/new-order-dialog", () => ({
 vi.mock("@/components/orders/order-review-dialog", () => ({
   OrderReviewDialog: ({ order }: { order: Order }) => <span>review:{order.id}</span>,
 }));
+vi.mock("@/components/orders/offer-dialog", () => ({
+  OfferDialog: ({ order }: { order: Order }) => <span>offer:{order.id}</span>,
+}));
 
 vi.mock("@/lib/logger", () => ({
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
@@ -45,6 +48,8 @@ function baseOrder(over: Partial<Order> = {}): Order {
     emailStatus: "trimis",
     closedAt: null,
     createdAt: "2026-06-01T08:00:00Z",
+    registrationNumber: null,
+    offerPrice: null,
     ...over,
   };
 }
@@ -85,7 +90,7 @@ describe("OrdersPage", () => {
     expect(screen.getByText("Filtru ulei")).toBeInTheDocument();
     expect(screen.getByText("WVWZZZ1KZAW000001")).toBeInTheDocument();
     expect(screen.getByText("În așteptare")).toBeInTheDocument();
-    expect(screen.getAllByText("—")).toHaveLength(2); // orderNumber + delivery
+    expect(screen.getAllByText("—")).toHaveLength(3); // orderNumber + delivery + offerPrice
   });
 
   it("shows the delivery countdown when both dates are present", () => {
@@ -155,5 +160,11 @@ describe("OrdersPage", () => {
     });
     expect(screen.getByText("Filtru ulei")).toBeInTheDocument();
     expect(screen.getByText("Altă piesă")).toBeInTheDocument();
+  });
+
+  it("renders offer dialog and offerPrice for orders with offer_pending status", () => {
+    setup([baseOrder({ id: "O1", replyStatus: "offer_pending", offerPrice: "450.00 RON" })]);
+    expect(screen.getByText("offer:O1")).toBeInTheDocument();
+    expect(screen.getByText("450.00 RON")).toBeInTheDocument();
   });
 });

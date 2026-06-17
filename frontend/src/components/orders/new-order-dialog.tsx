@@ -14,9 +14,10 @@ interface NewOrderForm {
   chassisSeries: string;
   partCode: string;
   mailboxId: string;
+  registrationNumber: string;
 }
 
-const emptyForm: NewOrderForm = { vendorEmail: "", chassisSeries: "", partCode: "", mailboxId: "" };
+const emptyForm: NewOrderForm = { vendorEmail: "", chassisSeries: "", partCode: "", mailboxId: "", registrationNumber: "" };
 
 export function NewOrderDialog() {
   const [open, setOpen] = useState(false);
@@ -98,8 +99,12 @@ function NewOrderForm({ vendorMailboxes, onClose }: { vendorMailboxes: Mailbox[]
               <Input id="chassisSeries" required placeholder="WVWZZZ1KZAW000001" value={form.chassisSeries} onChange={(e) => update("chassisSeries", e.target.value)} />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="partCode">Piesa</Label>
-              <Input id="partCode" required placeholder="Filtru ulei" value={form.partCode} onChange={(e) => update("partCode", e.target.value)} />
+              <Label htmlFor="registrationNumber">Număr înmatriculare</Label>
+              <Input id="registrationNumber" required placeholder="B 123 ABC" value={form.registrationNumber} onChange={(e) => update("registrationNumber", e.target.value)} />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="partCode">Cod piesă</Label>
+              <Input id="partCode" required placeholder="OEM 06A115561B" value={form.partCode} onChange={(e) => update("partCode", e.target.value)} />
             </div>
           </div>
 

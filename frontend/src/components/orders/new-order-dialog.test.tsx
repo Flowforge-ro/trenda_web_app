@@ -69,7 +69,8 @@ describe("NewOrderDialog", () => {
     expect(screen.getByLabelText(/Cutie poștală/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/Email furnizor/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/Serie sasiu/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/Piesa/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Cod piesă/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Număr înmatriculare/i)).toBeInTheDocument();
   });
 
   it("auto-selects the only vendor mailbox when dialog opens", async () => {
@@ -119,7 +120,8 @@ describe("NewOrderDialog", () => {
 
     await user.type(screen.getByLabelText(/Email furnizor/i), "furnizor@test.ro");
     await user.type(screen.getByLabelText(/Serie sasiu/i), "WVWZZZ1KZAW000001");
-    await user.type(screen.getByLabelText(/Piesa/i), "Filtru ulei");
+    await user.type(screen.getByLabelText(/Cod piesă/i), "Filtru ulei");
+    await user.type(screen.getByLabelText(/Număr înmatriculare/i), "B 123 ABC");
 
     await user.click(screen.getByRole("button", { name: /Trimite/i }));
 
@@ -130,6 +132,7 @@ describe("NewOrderDialog", () => {
         chassisSeries: "WVWZZZ1KZAW000001",
         partCode: "Filtru ulei",
         mailboxId: "mb1",
+        registrationNumber: "B 123 ABC",
       },
       expect.objectContaining({ onSuccess: expect.any(Function) })
     );
@@ -141,7 +144,8 @@ describe("NewOrderDialog", () => {
 
     await user.type(screen.getByLabelText(/Email furnizor/i), "furnizor@test.ro");
     await user.type(screen.getByLabelText(/Serie sasiu/i), "WVWZZZ1KZAW000001");
-    await user.type(screen.getByLabelText(/Piesa/i), "Filtru ulei");
+    await user.type(screen.getByLabelText(/Număr înmatriculare/i), "B 123 ABC");
+    await user.type(screen.getByLabelText(/Cod piesă/i), "Filtru ulei");
 
     // Simulate success by calling the onSuccess callback directly
     mockMutate.mockImplementationOnce((_payload: unknown, opts: { onSuccess: (r: { emailSent: boolean }) => void }) => {
