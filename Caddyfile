@@ -5,6 +5,17 @@
 app.flowforge.ro {
 	encode zstd gzip
 
+	# Security headers for all responses (SPA + /api). The app is fully same-origin
+	# (SPA and API share this host), so 'self' covers script/connect/img/font.
+	# style-src needs 'unsafe-inline' for Tailwind; OAuth is a top-level redirect
+	# so no extra connect-src host is required.
+	header {
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
 	# API: strip the /api prefix and forward to the backend container.
 	# The backend's routes live at the root (/orders, /auth/..., /health, ...),
 	# so handle_path removes /api before proxying.

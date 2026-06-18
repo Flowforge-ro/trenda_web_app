@@ -48,7 +48,7 @@ export function OrderReviewDialog({ order }: { order: Order }) {
       >
         verifică
       </DialogTrigger>
-      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+      <DialogContent className="max-h-[90vh] sm:max-w-4xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Verifică răspunsul furnizorului</DialogTitle>
         </DialogHeader>
