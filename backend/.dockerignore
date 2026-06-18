@@ -5,4 +5,4 @@ src/generated
 *.log
 .git
 eval
-*.md
+# NB: do not blanket-ignore *.md — prompts/*.md are runtime assets.

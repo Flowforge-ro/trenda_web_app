@@ -1,6 +1,10 @@
 generator client {
-  provider = "prisma-client"
-  output   = "../src/generated/prisma"
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  // Emit ESM imports with explicit .js extensions so the compiled client
+  // resolves under Node's ESM loader in production (tsx tolerates either in dev).
+  moduleFormat        = "esm"
+  importFileExtension = "js"
 }
 
 datasource db {

@@ -1,0 +1,53 @@
+name: Deploy to VPS
+
+# Deploys on every push/merge to main. Syncs the repo to the VPS and rebuilds
+# the Docker Compose stack there (db + migrate + backend + caddy).
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+# Never run two deploys at once; cancel an in-flight one if a newer push lands.
+concurrency:
+  group: deploy-vps
+  cancel-in-progress: true
+
+env:
+  VPS_HOST: vps-892cab69.vps.ovh.net
+  VPS_USER: claude
+  VPS_PATH: /home/claude/trenda_web_app
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up SSH
+        run: |
+          install -d -m 700 ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Rsync repo to VPS
+        # --delete keeps the server tree in sync with main, but server-only
+        # secrets (.env, backend/.env) and build artifacts are excluded so they
+        # are never overwritten or removed.
+        run: |
+          rsync -az --delete \
+            -e "ssh -i ~/.ssh/id_deploy" \
+            --exclude '.git' \
+            --exclude '.github' \
+            --exclude 'node_modules' \
+            --exclude 'dist' \
+            --exclude 'dist-pkg' \
+            --exclude 'backend/src/generated' \
+            --exclude '.env' \
+            --exclude 'backend/.env' \
+            ./ "$VPS_USER@$VPS_HOST:$VPS_PATH/"
+
+      - name: Build & restart stack
+        run: |
+          ssh -i ~/.ssh/id_deploy "$VPS_USER@$VPS_HOST" \
+            "cd $VPS_PATH && docker compose up -d --build && docker image prune -f"
