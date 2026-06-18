@@ -1,0 +1,24 @@
+# Root-only cruft kept out of the deployed server tree (AI-tool configs,
+# scratch/planning docs, transcripts). Leading '/' anchors each pattern to the
+# repo root so app files like backend/prompts/*.md are NOT affected.
+/.claude
+/.gemini
+/.kiro
+/.qoder
+/.cursorrules
+/.windsurfrules
+/.opencode.json
+/.mcp.json
+/AGENTS.md
+/GEMINI.md
+/QODER.md
+/CLAUDE.md
+/README.md
+/HANDOFF.md
+/claude_handoff.md
+/RECOMMENDATIONS.md
+/SECURITY-TODO.md
+/WORKLOG.md
+/PATHFINDER-*
+/docs
+/*.txt
