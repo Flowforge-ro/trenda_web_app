@@ -15,7 +15,7 @@ const mockUseSaveReview = vi.fn(() => ({
 vi.mock("@/lib/orders", () => ({
   useOrderReview: vi.fn(),
   useSaveReview: () => mockUseSaveReview(),
-  attachmentUrl: (orderId: string, attId: string) => `/orders/${orderId}/attachments/${attId}`,
+  attachmentUrl: (orderId: string, attId: string) => `/orders/${orderId}/attachments?attachmentId=${attId}`,
 }));
 
 vi.mock("@/lib/logger", () => ({
@@ -127,7 +127,7 @@ describe("OrderReviewDialog", () => {
     expect(screen.getByText("confirmare.pdf")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Descarcă/i })).toHaveAttribute(
       "href",
-      "/orders/O1/attachments/A1"
+      "/orders/O1/attachments?attachmentId=A1"
     );
   });
 

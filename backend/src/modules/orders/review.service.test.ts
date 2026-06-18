@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { getOrderReview, getReviewAttachment, saveOrderReview, reviewSaveSchema, type ReviewDeps } from "./review.service.js";
+import { getOrderReview, getReviewAttachment, getFlaggedOrderAttachments, getFlaggedOrderAttachment, saveOrderReview, reviewSaveSchema, type ReviewDeps } from "./review.service.js";
 
 const reply = {
   graphMessageId: "MSG1",

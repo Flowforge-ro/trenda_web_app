@@ -10,7 +10,8 @@
     "db:migrate": "npx prisma migrate dev",
     "db:generate": "npx prisma generate",
     "db:studio": "npx prisma studio",
-    "db:seed": "tsx prisma/seed.ts"
+    "db:seed": "tsx prisma/seed.ts",
+    "eval:extraction": "tsx eval/extraction/run.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.2",

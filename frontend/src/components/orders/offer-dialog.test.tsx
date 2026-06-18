@@ -12,7 +12,7 @@ vi.mock("@/lib/orders", () => ({
   useOrderReview: vi.fn(),
   useAcceptOffer: vi.fn(() => ({ mutate: mockAcceptMutate, isPending: false })),
   useRejectOffer: vi.fn(() => ({ mutate: mockRejectMutate, isPending: false })),
-  attachmentUrl: (orderId: string, attId: string) => `/orders/${orderId}/attachments/${attId}`,
+  attachmentUrl: (orderId: string, attId: string) => `/orders/${orderId}/attachments?attachmentId=${attId}`,
 }));
 
 vi.mock("@/lib/logger", () => ({

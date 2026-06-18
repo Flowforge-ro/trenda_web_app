@@ -1,0 +1,17 @@
+{
+  "defaults": { "today": "2026-06-17", "partCode": null },
+  "cases": [
+    {
+      "file": "example-offer.txt",
+      "today": "2026-06-17",
+      "partCode": "FIL-9921",
+      "expect": {
+        "isOffer": true,
+        "orderNumber": "CMD-4471",
+        "deliveryEarliest": "2026-06-24",
+        "deliveryLatest": "2026-06-26",
+        "status": "extracted"
+      }
+    }
+  ]
+}

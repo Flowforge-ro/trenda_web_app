@@ -240,10 +240,72 @@ async function generateWithFallback(
   }
 }
 
+/**
+ * Normalize Romanian currency wording ("lei"/"ron", any case) to "RON". Prices
+ * in another currency (EUR, USD, …) are left exactly as the model returned them.
+ */
+export function normalizePrice(price: string | null): string | null {
+  if (!price) return null;
+  return price.replace(/(?<!\p{L})(lei|ron)(?!\p{L})/giu, "RON");
+}
+
 function parseIsoDate(s: string): Date | null {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
   const d = new Date(`${s}T00:00:00.000Z`);
   return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/**
+ * A relative lead-time expressed in days, e.g. "5-7 zile lucrătoare" or "3 zile".
+ * Vendors quote these against the moment they reply, but the model often anchors
+ * them to a date printed in the offer (weeks old), yielding past delivery dates.
+ * We re-resolve them deterministically against `today` instead.
+ */
+function parseRelativeDays(text: string): { min: number; max: number; business: boolean } | null {
+  // Match "N" or "N-M" before "zile", plus an optional working-day marker. The
+  // marker is matched loosely so abbreviations all count as business days:
+  // "lucrătoare", "lucratoare", "lucr.", "lucr", "z.l." → weekends excluded.
+  const m = text
+    .toLowerCase()
+    .match(/(\d{1,3})\s*(?:[-–—]\s*(\d{1,3}))?\s*zile(\s*(?:lucr[ăâîșța-z]*\.?|l\.))?/);
+  if (!m) return null;
+  const min = Number.parseInt(m[1], 10);
+  const max = m[2] ? Number.parseInt(m[2], 10) : min;
+  if (max < min) return null;
+  return { min, max, business: m[3] != null };
+}
+
+function addDays(base: Date, n: number, business: boolean): Date {
+  const d = new Date(base);
+  if (!business) {
+    d.setUTCDate(d.getUTCDate() + n);
+    return d;
+  }
+  let added = 0;
+  while (added < n) {
+    d.setUTCDate(d.getUTCDate() + 1);
+    const dow = d.getUTCDay();
+    if (dow !== 0 && dow !== 6) added += 1;
+  }
+  return d;
+}
+
+/**
+ * Resolve a relative lead-time phrase ("5-7 zile lucrătoare", "3 zile") into a
+ * concrete delivery window counted from `from`. Returns null for absolute or
+ * non-day phrases, which keep whatever dates the model produced.
+ */
+export function resolveRelativeDelivery(
+  text: string | null,
+  from: Date
+): { earliest: Date; latest: Date } | null {
+  if (!text) return null;
+  const rel = parseRelativeDays(text);
+  if (!rel) return null;
+  return {
+    earliest: addDays(from, rel.min, rel.business),
+    latest: addDays(from, rel.max, rel.business),
+  };
 }
 
 export async function extractOrderInfo(
@@ -269,13 +331,26 @@ export async function extractOrderInfo(
     }
   }
 
+  // Re-resolve relative lead times ("5-7 zile lucrătoare", "3 zile") against today
+  // so a window the model anchored to a stale offer date isn't reported as overdue.
+  const relText = parsed.deliveryTime ?? parsed.deliveryQuote;
+  const todayDate = parseIsoDate(today);
+  if (relText && todayDate) {
+    const resolved = resolveRelativeDelivery(relText, todayDate);
+    if (resolved) {
+      deliveryEarliest = resolved.earliest;
+      deliveryLatest = resolved.latest;
+      deliveryTime = parsed.deliveryTime ?? relText;
+    }
+  }
+
   // Grounding only applies to text — for binary we have no source text to match.
   const body = source.kind === "text" ? source.body : null;
   const orderNumberGrounded = body === null ? true : quoteInBody(parsed.orderNumberQuote, body);
   const deliveryGrounded = body === null ? true : quoteInBody(parsed.deliveryQuote, body);
 
   const isOffer = parsed.isOffer === true;
-  const price = parsed.price || null;
+  const price = normalizePrice(parsed.price || null);
 
   const status: ExtractionResult["status"] =
     orderNumber && deliveryEarliest ? "extracted" : "needs_review";

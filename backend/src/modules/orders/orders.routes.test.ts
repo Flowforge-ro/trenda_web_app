@@ -147,6 +147,7 @@ before(async () => {
     renderStatusRequest: () => "status-body",
     renderOfferAcceptance: () => "acceptance-body",
     recordUsage: async () => {},
+    now: () => new Date(),
   });
 
   memberCookie = await loginAs(app, { email: memberUser.email, password: "pw" });
@@ -166,6 +167,7 @@ after(async () => {
     renderStatusRequest: (await import("../../lib/template.js")).renderStatusRequest,
     renderOfferAcceptance: (await import("../../lib/template.js")).renderOfferAcceptance,
     recordUsage: (await import("../../lib/usage.js")).recordUsage,
+    now: () => new Date(),
   });
 });
 
@@ -202,8 +204,18 @@ test("GET /orders/:id/review without a session returns 401", async () => {
   assert.equal(res.statusCode, 401);
 });
 
-test("GET /orders/:id/attachments/:attachmentId without a session returns 401", async () => {
-  const res = await app.inject({ method: "GET", url: "/orders/O1/attachments/A1" });
+test("GET /orders/:id/attachments without a session returns 401", async () => {
+  const res = await app.inject({ method: "GET", url: "/orders/O1/attachments?attachmentId=A1" });
+  assert.equal(res.statusCode, 401);
+});
+
+test("POST /orders/:id/flag without a session returns 401", async () => {
+  const res = await app.inject({ method: "POST", url: "/orders/O1/flag", payload: { reason: "x" } });
+  assert.equal(res.statusCode, 401);
+});
+
+test("POST /orders/:id/unflag without a session returns 401", async () => {
+  const res = await app.inject({ method: "POST", url: "/orders/O1/unflag" });
   assert.equal(res.statusCode, 401);
 });
 

@@ -25,6 +25,9 @@ vi.mock("@/components/orders/order-review-dialog", () => ({
 vi.mock("@/components/orders/offer-dialog", () => ({
   OfferDialog: ({ order }: { order: Order }) => <span>offer:{order.id}</span>,
 }));
+vi.mock("@/components/orders/flag-order-button", () => ({
+  FlagOrderButton: ({ order }: { order: Order }) => <span>flag:{order.id}</span>,
+}));
 
 vi.mock("@/lib/logger", () => ({
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },

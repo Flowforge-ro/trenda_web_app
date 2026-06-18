@@ -110,6 +110,7 @@ test("listMessagesSince requests the filter window and returns parsed messages",
   assert.equal(msgs.length, 1);
   assert.equal(msgs[0].id, "MSG1");
   assert.equal(msgs[0].from?.emailAddress.address, "supplier@ex.ro");
+  assert.ok(calledUrl.includes("/me/mailFolders/inbox/messages"), `expected inbox folder, url was ${calledUrl}`);
   assert.ok(calledUrl.includes("receivedDateTime%20ge%202026-06-01T09%3A00%3A00Z"), `url was ${calledUrl}`);
   assert.ok(calledUrl.includes("$select="), "expected a $select clause");
   assert.equal(prefer, 'outlook.body-content-type="text"');

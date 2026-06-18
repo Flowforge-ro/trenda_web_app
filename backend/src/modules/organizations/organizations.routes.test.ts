@@ -61,6 +61,37 @@ const fakeOrgListRow = {
   _count: { users: 2, mailboxes: 1 },
 };
 
+const fakeFlaggedRow = {
+  id: "ord-flagged",
+  orderNumber: "CMD-9",
+  partCode: "Filtru",
+  chassisSeries: "WVW9",
+  registrationNumber: "B-123-XYZ",
+  vendorEmail: "f@ex.ro",
+  offerPrice: "120 RON",
+  deliveryTime: "5-7 zile lucrătoare",
+  deliveryEarliest: new Date("2026-06-24T00:00:00Z"),
+  deliveryLatest: new Date("2026-06-26T00:00:00Z"),
+  status: "extracted",
+  replyStatus: "offer_pending",
+  orderNumberConfidence: "high",
+  deliveryConfidence: "low",
+  reviewReasons: "Termen livrare neclar",
+  flaggedAt: new Date("2026-06-17T12:00:00Z"),
+  flagReason: "preț greșit",
+  org: { id: ORG_ID, name: "Existing Org" },
+  flaggedBy: { id: "U7", email: "m@ex.ro", name: "Member" },
+  replies: [
+    {
+      fromEmail: "f@ex.ro",
+      subject: "Re: Cerere ofertă",
+      body: "Vă oferim piesa la 120 lei, livrare 5-7 zile lucrătoare.",
+      receivedDateTime: new Date("2026-06-16T08:00:00Z"),
+      hasAttachments: false,
+    },
+  ],
+};
+
 /** Records the last organization.updateMany call so tests can assert on it. */
 type OrgUpdateCall = { where: { id: string }; data: { suspendedAt: Date | null } };
 let lastOrgUpdate: OrgUpdateCall | null = null;
@@ -105,6 +136,9 @@ before(async () => {
         lastOrgUpdate = { where, data };
         return Promise.resolve({ count: where.id === ORG_ID ? 1 : 0 });
       },
+    },
+    order: {
+      findMany: () => Promise.resolve([fakeFlaggedRow]),
     },
     $transaction: async (fn: (tx: unknown) => Promise<unknown>) => {
       const tx = {
@@ -333,4 +367,41 @@ test("PATCH /organizations/:id reactivates: clears suspendedAt", async () => {
   });
   assert.equal(res.statusCode, 200);
   assert.equal(getLastOrgUpdate()?.data.suspendedAt, null);
+});
+
+// ---------------------------------------------------------------------------
+// GET /organizations/flagged-orders — superadmin cross-org flagged list
+// ---------------------------------------------------------------------------
+
+test("GET /organizations/flagged-orders without session returns 401", async () => {
+  const res = await app.inject({ method: "GET", url: "/organizations/flagged-orders" });
+  assert.equal(res.statusCode, 401);
+});
+
+test("GET /organizations/flagged-orders as admin returns 403", async () => {
+  const res = await app.inject({
+    method: "GET",
+    url: "/organizations/flagged-orders",
+    headers: { cookie: adminCookie },
+  });
+  assert.equal(res.statusCode, 403);
+});
+
+test("GET /organizations/flagged-orders as superadmin returns the flagged orders", async () => {
+  const res = await app.inject({
+    method: "GET",
+    url: "/organizations/flagged-orders",
+    headers: { cookie: superadminCookie },
+  });
+  assert.equal(res.statusCode, 200);
+  const body = res.json();
+  assert.equal(body.orders.length, 1);
+  assert.equal(body.orders[0].id, "ord-flagged");
+  assert.equal(body.orders[0].flagReason, "preț greșit");
+  assert.equal(body.orders[0].org.name, "Existing Org");
+  assert.equal(body.orders[0].flaggedBy.email, "m@ex.ro");
+  // Detail payload: the parsed email and the extracted result travel with it.
+  assert.equal(body.orders[0].replies[0].body, "Vă oferim piesa la 120 lei, livrare 5-7 zile lucrătoare.");
+  assert.equal(body.orders[0].reviewReasons, "Termen livrare neclar");
+  assert.equal(body.orders[0].deliveryConfidence, "low");
 });
