@@ -20,7 +20,7 @@ export function LoginPage() {
     <div className="flex min-h-screen flex-col items-center justify-center bg-background px-4">
       <div className="w-full max-w-sm rounded-2xl border bg-card p-8 shadow-sm">
         <div className="mb-8 text-center">
-          <h1 className="text-3xl font-bold">Autentificare</h1>
+          <h1 className="text-3xl font-bold">Autentifi\are</h1>
         </div>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1">
