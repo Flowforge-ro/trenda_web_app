@@ -4,9 +4,6 @@ import {
   Truck,
   ClipboardList,
   CalendarDays,
-  Boxes,
-  Users,
-  BarChart3,
   Settings,
   LogOut,
   PanelLeftClose,
@@ -20,9 +17,6 @@ import { cn } from "@/lib/utils";
 const navItems = [
   { to: "/", label: "Comenzi", icon: ClipboardList, end: true },
   { to: "/programari", label: "Programări", icon: CalendarDays, end: false },
-  { to: "/piese", label: "Piese", icon: Boxes, end: false },
-  { to: "/clienti", label: "Clienți", icon: Users, end: false },
-  { to: "/rapoarte", label: "Rapoarte", icon: BarChart3, end: false },
   { to: "/setari", label: "Setări", icon: Settings, end: false },
 ];
 

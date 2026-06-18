@@ -5,7 +5,6 @@ import { useAuth } from "./lib/auth";
 import { LoginPage } from "./pages/login";
 import { OrdersPage } from "./pages/orders";
 import { AppointmentsPage } from "./pages/appointments";
-import { PlaceholderPage } from "./pages/placeholder";
 import { SettingsPage } from "./pages/settings";
 import { SuperadminPanel } from "./pages/admin";
 import { AppLayout } from "./components/layout/app-layout";
@@ -40,9 +39,6 @@ function App() {
           >
             <Route path="/" element={<OrdersPage />} />
             <Route path="/programari" element={<AppointmentsPage />} />
-            <Route path="/piese" element={<PlaceholderPage title="Piese" />} />
-            <Route path="/clienti" element={<PlaceholderPage title="Clienți" />} />
-            <Route path="/rapoarte" element={<PlaceholderPage title="Rapoarte" />} />
             <Route path="/setari" element={<SettingsPage />} />
           </Route>
         </Routes>
