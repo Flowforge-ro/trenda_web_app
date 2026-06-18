@@ -5,9 +5,17 @@ import { FlaggedOrdersTab } from "./admin-flagged";
 import type { FlaggedOrder } from "@/lib/flagged-orders";
 
 const mockUseFlaggedOrders = vi.fn();
+const mockUseFlaggedOrderAttachments = vi.fn();
 vi.mock("@/lib/flagged-orders", () => ({
   useFlaggedOrders: () => mockUseFlaggedOrders(),
+  useFlaggedOrderAttachments: (orderId: string, enabled: boolean) =>
+    mockUseFlaggedOrderAttachments(orderId, enabled),
+  flaggedAttachmentUrl: (orderId: string, attachmentId: string) =>
+    `/api/organizations/flagged-orders/${orderId}/attachment?attachmentId=${attachmentId}`,
 }));
+
+// Most tests don't care about attachments — default to an empty, settled query.
+mockUseFlaggedOrderAttachments.mockReturnValue({ data: [], isLoading: false, isError: false });
 
 const ORDER: FlaggedOrder = {
   id: "ord1",
@@ -57,6 +65,31 @@ describe("FlaggedOrdersTab", () => {
     expect(screen.getByText("Termen livrare neclar")).toBeInTheDocument();
     // Flag info (appears in both the row and the dialog)
     expect(screen.getAllByText("preț greșit").length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("renders the reply attachments in the detail dialog", async () => {
+    mockUseFlaggedOrders.mockReturnValue({ data: [ORDER], isLoading: false, isError: false });
+    mockUseFlaggedOrderAttachments.mockReturnValue({
+      data: [
+        { id: "att-pdf", name: "oferta.pdf", contentType: "application/pdf", size: 1234 },
+        { id: "att-img", name: "poza.png", contentType: "image/png", size: 4567 },
+      ],
+      isLoading: false,
+      isError: false,
+    });
+    const user = userEvent.setup();
+    render(<FlaggedOrdersTab />);
+
+    await user.click(screen.getByRole("button", { name: "Detalii" }));
+
+    expect(screen.getByText("oferta.pdf")).toBeInTheDocument();
+    expect(screen.getByText("poza.png")).toBeInTheDocument();
+    // Download link points at the flagged-order attachment endpoint with the id.
+    const links = screen.getAllByRole("link", { name: "Descarcă" });
+    expect(links[0]).toHaveAttribute(
+      "href",
+      "/api/organizations/flagged-orders/ord1/attachment?attachmentId=att-pdf"
+    );
   });
 
   it("shows an empty state when nothing is flagged", () => {

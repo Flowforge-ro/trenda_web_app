@@ -4,7 +4,13 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { useFlaggedOrders, type FlaggedOrder } from "@/lib/flagged-orders";
+import {
+  useFlaggedOrders,
+  useFlaggedOrderAttachments,
+  flaggedAttachmentUrl,
+  type FlaggedOrder,
+  type FlaggedAttachment,
+} from "@/lib/flagged-orders";
 
 const columns = ["Organizație", "Comandă", "Piesă", "Semnalat de", "Motiv", "Când", ""];
 
@@ -17,6 +23,51 @@ function Field({ label, value }: { label: string; value: React.ReactNode }) {
     <div className="flex justify-between gap-4 border-b border-gray-100 py-1.5">
       <span className="text-xs text-muted-foreground">{label}</span>
       <span className="text-right text-sm text-foreground">{value || "—"}</span>
+    </div>
+  );
+}
+
+function FlaggedAttachmentView({ orderId, att }: { orderId: string; att: FlaggedAttachment }) {
+  const url = flaggedAttachmentUrl(orderId, att.id);
+  const type = att.contentType ?? "";
+  return (
+    <div className="rounded-md border border-gray-200 p-2">
+      <div className="mb-1 flex items-center justify-between gap-2">
+        <span className="truncate text-xs font-medium text-foreground">{att.name}</span>
+        <a href={url} target="_blank" rel="noreferrer" className="text-xs text-primary underline">
+          Descarcă
+        </a>
+      </div>
+      {type === "application/pdf" ? (
+        <object data={url} type="application/pdf" className="h-96 w-full">
+          <a href={url} target="_blank" rel="noreferrer" className="text-xs underline">
+            Deschide PDF
+          </a>
+        </object>
+      ) : type.startsWith("image/") ? (
+        <img src={url} alt={att.name} className="max-h-96 w-auto" />
+      ) : null}
+    </div>
+  );
+}
+
+// Mounted only while the dialog is open (its parent renders conditionally), so the
+// attachment query fires lazily — superadmin opens one flagged order at a time.
+function FlaggedAttachments({ orderId, hasAttachments }: { orderId: string; hasAttachments: boolean }) {
+  const { data, isLoading, isError } = useFlaggedOrderAttachments(orderId, hasAttachments);
+  if (!hasAttachments) return null;
+  return (
+    <div className="space-y-2">
+      <p className="text-xs font-medium text-muted-foreground">Atașamente</p>
+      {isLoading ? (
+        <p className="text-xs text-muted-foreground">Se încarcă atașamentele…</p>
+      ) : isError ? (
+        <p className="text-xs text-error">Nu s-au putut încărca atașamentele.</p>
+      ) : !data || data.length === 0 ? (
+        <p className="text-xs text-muted-foreground">Niciun atașament.</p>
+      ) : (
+        data.map((att) => <FlaggedAttachmentView key={att.id} orderId={orderId} att={att} />)
+      )}
     </div>
   );
 }
@@ -45,6 +96,7 @@ function FlaggedDetailDialog({ order, onClose }: { order: FlaggedOrder | null; o
                   <pre className="max-h-80 overflow-y-auto whitespace-pre-wrap rounded-md bg-gray-50 p-3 text-sm text-foreground">
                     {reply.body ?? "(fără text)"}
                   </pre>
+                  <FlaggedAttachments orderId={order.id} hasAttachments={reply.hasAttachments} />
                 </>
               ) : (
                 <p className="text-sm text-muted-foreground">Niciun email asociat (comandă fără răspuns).</p>
