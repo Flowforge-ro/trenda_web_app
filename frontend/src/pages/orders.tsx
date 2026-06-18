@@ -8,6 +8,7 @@ import {
 } from "@/components/ui/table";
 import { NewOrderDialog } from "@/components/orders/new-order-dialog";
 import { OrderReviewDialog } from "@/components/orders/order-review-dialog";
+import { OfferDialog } from "@/components/orders/offer-dialog";
 import { cn } from "@/lib/utils";
 import { CheckCircle2, RotateCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -46,12 +47,15 @@ function StatusCell({ order }: { order: Order }) {
 
   const reviewBadge =
     order.replyStatus === "needs_review" ? <OrderReviewDialog order={order} /> : null;
+  const offerBadge =
+    order.replyStatus === "offer_pending" ? <OfferDialog order={order} /> : null;
 
   if (order.emailStatus === "trimis") {
     return (
       <div className="flex items-center gap-2">
         <StatusBadge status={order.status} />
         {reviewBadge}
+        {offerBadge}
       </div>
     );
   }
@@ -60,6 +64,7 @@ function StatusCell({ order }: { order: Order }) {
     <div className="flex items-center gap-2">
       <StatusBadge status={order.status} />
       {reviewBadge}
+      {offerBadge}
       <span
         className={cn(
           "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
@@ -101,7 +106,7 @@ function CloseOrderButton({ order }: { order: Order }) {
   );
 }
 
-const columns = ["Numar comanda", "Piesa", "Serie sasiu", "Status", "Timp livrare", ""];
+const columns = ["Numar comanda", "Piesa", "Serie sasiu", "Status", "Timp livrare", "Preț", ""];
 
 export function OrdersPage() {
   const { data, isLoading, hasNextPage, fetchNextPage, isFetchingNextPage } = useOrders();
@@ -145,9 +150,9 @@ export function OrdersPage() {
                   <TableCell className="px-4 py-3 font-medium text-foreground">
                     {o.orderNumber ?? "—"}
                   </TableCell>
-                  <TableCell className="px-4 py-3 text-foreground">{o.piesa}</TableCell>
+                  <TableCell className="px-4 py-3 text-foreground">{o.partCode}</TableCell>
                   <TableCell className="px-4 py-3 font-mono text-xs text-muted-foreground">
-                    {o.serieSasiu}
+                    {o.chassisSeries}
                   </TableCell>
                   <TableCell className="px-4 py-3">
                     <StatusCell order={o} />
@@ -156,6 +161,9 @@ export function OrdersPage() {
                     {o.deliveryEarliest && o.deliveryLatest
                       ? formatDeliveryCountdown(o.deliveryEarliest, o.deliveryLatest)
                       : o.deliveryTime ?? "—"}
+                  </TableCell>
+                  <TableCell className="px-4 py-3 text-foreground">
+                    {o.offerPrice ?? "—"}
                   </TableCell>
                   <TableCell className="px-4 py-3 text-right">
                     <CloseOrderButton order={o} />

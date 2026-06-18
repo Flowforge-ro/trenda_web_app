@@ -2,17 +2,18 @@ import { z } from "zod";
 import { prisma } from "../../prisma.js";
 import { decrypt, encrypt } from "../../lib/crypto.js";
 import { getAccessTokenFromRefreshToken, createAndSendMail } from "../../lib/microsoft.js";
-import { renderStatusRequest } from "../../lib/template.js";
+import { renderStatusRequest, renderOfferAcceptance } from "../../lib/template.js";
 import { getMailboxAccessToken } from "../../lib/mailbox-token.js";
 import { logError } from "../../lib/db-log.js";
 import { recordUsage } from "../../lib/usage.js";
 import type { Order } from "../../generated/prisma/client.js";
 
 export const orderInputSchema = z.object({
-  emailFurnizor: z.string().email(),
-  serieSasiu: z.string().min(1),
-  piesa: z.string().min(1),
+  vendorEmail: z.string().email(),
+  chassisSeries: z.string().min(1),
+  partCode: z.string().min(1),
   mailboxId: z.string().min(1),
+  registrationNumber: z.string().min(1),
 });
 export type OrderInput = z.infer<typeof orderInputSchema>;
 
@@ -23,18 +24,23 @@ export interface OrderDeps {
   getAccessTokenFromRefreshToken: typeof getAccessTokenFromRefreshToken;
   createAndSendMail: typeof createAndSendMail;
   renderStatusRequest: typeof renderStatusRequest;
+  renderOfferAcceptance: typeof renderOfferAcceptance;
   recordUsage: typeof recordUsage;
 }
 
-const defaultDeps: OrderDeps = {
+let defaultDeps: OrderDeps = {
   prisma,
   decrypt,
   encrypt,
   getAccessTokenFromRefreshToken,
   createAndSendMail,
   renderStatusRequest,
+  renderOfferAcceptance,
   recordUsage,
 };
+
+/** Override deps in tests only. Call with the original object to restore. */
+export function setOrderDepsForTests(deps: OrderDeps) { defaultDeps = deps; }
 
 export async function createOrder(
   orgId: string,
@@ -53,9 +59,10 @@ export async function createOrder(
       orgId,
       createdByUserId: userId,
       mailboxId: mailbox.id,
-      emailFurnizor: input.emailFurnizor,
-      serieSasiu: input.serieSasiu,
-      piesa: input.piesa,
+      vendorEmail: input.vendorEmail,
+      chassisSeries: input.chassisSeries,
+      partCode: input.partCode,
+      registrationNumber: input.registrationNumber,
       emailStatus: "in_curs",
     },
   });
@@ -69,7 +76,7 @@ export async function resendOrderEmail(orgId: string, orderId: string, deps: Ord
 }
 
 async function sendOrderEmail(
-  order: Pick<Order, "id" | "orgId" | "mailboxId" | "emailFurnizor" | "serieSasiu" | "piesa">,
+  order: Pick<Order, "id" | "orgId" | "mailboxId" | "vendorEmail" | "chassisSeries" | "partCode">,
   deps: OrderDeps
 ) {
   try {
@@ -77,9 +84,9 @@ async function sendOrderEmail(
     if (!accessToken) throw new Error("Mailbox has no usable token");
 
     const { internetMessageId } = await deps.createAndSendMail(accessToken, {
-      to: order.emailFurnizor,
-      subject: `Cerere comandă piesă — ${order.serieSasiu}`,
-      body: deps.renderStatusRequest({ piesa: order.piesa, serieSasiu: order.serieSasiu }),
+      to: order.vendorEmail,
+      subject: `Cerere comandă piesă — ${order.chassisSeries}`,
+      body: deps.renderStatusRequest({ partCode: order.partCode, chassisSeries: order.chassisSeries }),
     });
     await deps.recordUsage({ orgId: order.orgId, kind: "email_write", emails: 1 });
 
@@ -123,4 +130,27 @@ export async function closeOrder(orgId: string, orderId: string, deps: OrderDeps
   if (!order) return null;
   if (order.closedAt) return order;
   return deps.prisma.order.update({ where: { id: orderId }, data: { closedAt: new Date() } });
+}
+
+export async function acceptOffer(orgId: string, orderId: string, deps: OrderDeps = defaultDeps) {
+  const order = await deps.prisma.order.findFirst({ where: { id: orderId, orgId } });
+  if (!order || order.replyStatus !== "offer_pending") return null;
+  const accessToken = await getMailboxAccessToken(deps, order.mailboxId);
+  if (!accessToken) return null;
+  await deps.createAndSendMail(accessToken, {
+    to: order.vendorEmail,
+    subject: `Confirmare comandă — ${order.chassisSeries}`,
+    body: deps.renderOfferAcceptance({ partCode: order.partCode, chassisSeries: order.chassisSeries }),
+  });
+  await deps.recordUsage({ orgId: order.orgId, kind: "email_write", emails: 1 });
+  return deps.prisma.order.update({ where: { id: orderId }, data: { replyStatus: "accepted" } });
+}
+
+export async function rejectOffer(orgId: string, orderId: string, deps: OrderDeps = defaultDeps) {
+  const order = await deps.prisma.order.findFirst({ where: { id: orderId, orgId } });
+  if (!order || order.replyStatus !== "offer_pending") return null;
+  return deps.prisma.order.update({
+    where: { id: orderId },
+    data: { replyStatus: "rejected", closedAt: order.closedAt ?? new Date() },
+  });
 }

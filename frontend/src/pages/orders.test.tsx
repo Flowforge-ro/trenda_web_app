@@ -22,6 +22,9 @@ vi.mock("@/components/orders/new-order-dialog", () => ({
 vi.mock("@/components/orders/order-review-dialog", () => ({
   OrderReviewDialog: ({ order }: { order: Order }) => <span>review:{order.id}</span>,
 }));
+vi.mock("@/components/orders/offer-dialog", () => ({
+  OfferDialog: ({ order }: { order: Order }) => <span>offer:{order.id}</span>,
+}));
 
 vi.mock("@/lib/logger", () => ({
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
@@ -33,9 +36,9 @@ import { useOrders } from "@/lib/orders";
 function baseOrder(over: Partial<Order> = {}): Order {
   return {
     id: "O1",
-    emailFurnizor: "supplier@ex.ro",
-    serieSasiu: "WVWZZZ1KZAW000001",
-    piesa: "Filtru ulei",
+    vendorEmail: "supplier@ex.ro",
+    chassisSeries: "WVWZZZ1KZAW000001",
+    partCode: "Filtru ulei",
     status: "În așteptare",
     orderNumber: null,
     deliveryTime: null,
@@ -45,6 +48,8 @@ function baseOrder(over: Partial<Order> = {}): Order {
     emailStatus: "trimis",
     closedAt: null,
     createdAt: "2026-06-01T08:00:00Z",
+    registrationNumber: null,
+    offerPrice: null,
     ...over,
   };
 }
@@ -85,7 +90,7 @@ describe("OrdersPage", () => {
     expect(screen.getByText("Filtru ulei")).toBeInTheDocument();
     expect(screen.getByText("WVWZZZ1KZAW000001")).toBeInTheDocument();
     expect(screen.getByText("În așteptare")).toBeInTheDocument();
-    expect(screen.getAllByText("—")).toHaveLength(2); // orderNumber + delivery
+    expect(screen.getAllByText("—")).toHaveLength(3); // orderNumber + delivery + offerPrice
   });
 
   it("shows the delivery countdown when both dates are present", () => {
@@ -132,7 +137,7 @@ describe("OrdersPage", () => {
   it("renders the review dialog only for orders needing review", () => {
     setup([
       baseOrder({ id: "O1", replyStatus: "needs_review" }),
-      baseOrder({ id: "O2", piesa: "Altă piesă" }),
+      baseOrder({ id: "O2", partCode: "Altă piesă" }),
     ]);
     expect(screen.getByText("review:O1")).toBeInTheDocument();
     expect(screen.queryByText("review:O2")).not.toBeInTheDocument();
@@ -149,11 +154,17 @@ describe("OrdersPage", () => {
       data: {
         pages: [
           { orders: [baseOrder({ id: "O1" })], nextCursor: "c1" },
-          { orders: [baseOrder({ id: "O2", piesa: "Altă piesă" })], nextCursor: null },
+          { orders: [baseOrder({ id: "O2", partCode: "Altă piesă" })], nextCursor: null },
         ],
       },
     });
     expect(screen.getByText("Filtru ulei")).toBeInTheDocument();
     expect(screen.getByText("Altă piesă")).toBeInTheDocument();
+  });
+
+  it("renders offer dialog and offerPrice for orders with offer_pending status", () => {
+    setup([baseOrder({ id: "O1", replyStatus: "offer_pending", offerPrice: "450.00 RON" })]);
+    expect(screen.getByText("offer:O1")).toBeInTheDocument();
+    expect(screen.getByText("450.00 RON")).toBeInTheDocument();
   });
 });

@@ -15,6 +15,7 @@ import { buildTestApp, loginAs } from "../../test-harness.js";
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { hashPassword } from "../../lib/password.js";
+import { setOrderDepsForTests } from "./orders.service.js";
 
 // ---------------------------------------------------------------------------
 // Fake prisma data
@@ -47,9 +48,9 @@ const fakeOrder = {
   orgId: ORG_ID,
   createdByUserId: memberUser.id,
   mailboxId: "mbox-1",
-  emailFurnizor: "vendor@example.com",
-  serieSasiu: "VIN001",
-  piesa: "Filtru",
+  vendorEmail: "vendor@example.com",
+  chassisSeries: "VIN001",
+  partCode: "Filtru",
   emailStatus: "trimis",
   internetMessageId: "msg-1",
   orderNumber: null,
@@ -60,6 +61,13 @@ const fakeOrder = {
   closedAt: null,
   createdAt: new Date("2024-01-01T00:00:00Z"),
   updatedAt: new Date("2024-01-01T00:00:00Z"),
+};
+
+// Offer-pending order for accept/reject-offer happy paths
+const fakeOfferOrder = {
+  ...fakeOrder,
+  id: "order-offer",
+  replyStatus: "offer_pending" as string | null,
 };
 
 // Fake organization
@@ -107,16 +115,39 @@ before(async () => {
         return Promise.resolve([fakeOrder]);
       },
       findFirst({ where }: { where: { id?: string; orgId?: string } }) {
+        if (where.id === fakeOfferOrder.id && where.orgId === ORG_ID)
+          return Promise.resolve(fakeOfferOrder);
         if (where.id === fakeOrder.id && where.orgId === ORG_ID)
           return Promise.resolve(fakeOrder);
         return Promise.resolve(null);
       },
       create: () => Promise.resolve(fakeOrder),
-      update: () => Promise.resolve(fakeOrder),
+      update: ({ where }: { where: { id?: string } }) =>
+        Promise.resolve(where.id === fakeOfferOrder.id ? fakeOfferOrder : fakeOrder),
     },
   };
 
   app = await buildTestApp(fakePrisma);
+
+  // Stub order service deps so acceptOffer's mail/token calls never hit real APIs.
+  const fakePrismaWithMailbox = {
+    ...fakePrisma,
+    mailbox: {
+      findUnique: () => Promise.resolve({ encryptedRefreshToken: "stub-token" }),
+      update: () => Promise.resolve({}),
+    },
+  };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  setOrderDepsForTests({
+    prisma: fakePrismaWithMailbox as any,
+    decrypt: (s: string) => s,
+    encrypt: (s: string) => s,
+    getAccessTokenFromRefreshToken: async () => ({ accessToken: "tok", refreshToken: undefined }),
+    createAndSendMail: async () => ({ internetMessageId: "mid-stub" }),
+    renderStatusRequest: () => "status-body",
+    renderOfferAcceptance: () => "acceptance-body",
+    recordUsage: async () => {},
+  });
 
   memberCookie = await loginAs(app, { email: memberUser.email, password: "pw" });
   superadminCookie = await loginAs(app, { email: superadminUser.email, password: "pw" });
@@ -124,6 +155,18 @@ before(async () => {
 
 after(async () => {
   await app.close();
+  // Restore real deps so other test files aren't affected (each file is its own process,
+  // but be explicit for clarity).
+  setOrderDepsForTests({
+    prisma: (await import("../../prisma.js")).prisma,
+    decrypt: (await import("../../lib/crypto.js")).decrypt,
+    encrypt: (await import("../../lib/crypto.js")).encrypt,
+    getAccessTokenFromRefreshToken: (await import("../../lib/microsoft.js")).getAccessTokenFromRefreshToken,
+    createAndSendMail: (await import("../../lib/microsoft.js")).createAndSendMail,
+    renderStatusRequest: (await import("../../lib/template.js")).renderStatusRequest,
+    renderOfferAcceptance: (await import("../../lib/template.js")).renderOfferAcceptance,
+    recordUsage: (await import("../../lib/usage.js")).recordUsage,
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -134,7 +177,7 @@ test("POST /orders without a session returns 401", async () => {
   const res = await app.inject({
     method: "POST",
     url: "/orders",
-    payload: { emailFurnizor: "f@ex.ro", serieSasiu: "WVW001", piesa: "Filtru" },
+    payload: { vendorEmail: "f@ex.ro", chassisSeries: "WVW001", partCode: "Filtru" },
   });
   assert.equal(res.statusCode, 401);
 });
@@ -193,9 +236,9 @@ test("POST /orders as superadmin (no orgId) returns 403", async () => {
     url: "/orders",
     headers: { cookie: superadminCookie },
     payload: {
-      emailFurnizor: "v@ex.com",
-      serieSasiu: "VIN001",
-      piesa: "Filtru",
+      vendorEmail: "v@ex.com",
+      chassisSeries: "VIN001",
+      partCode: "Filtru",
       mailboxId: "mbox-1",
     },
   });
@@ -212,7 +255,7 @@ test("POST /orders with missing required fields returns 400", async () => {
     method: "POST",
     url: "/orders",
     headers: { cookie: memberCookie },
-    payload: { emailFurnizor: "not-an-email", serieSasiu: "", piesa: "" },
+    payload: { vendorEmail: "not-an-email", chassisSeries: "", partCode: "" },
   });
   assert.equal(res.statusCode, 400);
   const body = res.json();
@@ -312,6 +355,44 @@ test("GET /orders with explicit limit returns correct shape", async () => {
 // ---------------------------------------------------------------------------
 // has-next-page path: findMany returns limit+1 rows → nextCursor is non-null
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// accept-offer / reject-offer routes
+// ---------------------------------------------------------------------------
+
+test("POST /orders/:id/accept-offer returns the updated order", async () => {
+  const res = await app.inject({
+    method: "POST",
+    url: `/orders/${fakeOfferOrder.id}/accept-offer`,
+    headers: { cookie: memberCookie },
+  });
+  assert.equal(res.statusCode, 200);
+  const body = res.json();
+  assert.ok(body.order, "body.order must exist");
+  assert.equal(body.order.id, fakeOfferOrder.id);
+});
+
+test("POST /orders/:id/reject-offer returns the updated order", async () => {
+  const res = await app.inject({
+    method: "POST",
+    url: `/orders/${fakeOfferOrder.id}/reject-offer`,
+    headers: { cookie: memberCookie },
+  });
+  assert.equal(res.statusCode, 200);
+  const body = res.json();
+  assert.ok(body.order, "body.order must exist");
+  assert.equal(body.order.id, fakeOfferOrder.id);
+});
+
+test("accept-offer returns 404 when service returns null", async () => {
+  const res = await app.inject({
+    method: "POST",
+    url: "/orders/no-such-order/accept-offer",
+    headers: { cookie: memberCookie },
+  });
+  assert.equal(res.statusCode, 404);
+  assert.deepEqual(res.json(), { error: "Order not found or not an offer" });
+});
 
 test("GET /orders with limit=1 and two DB rows returns nextCursor and exactly 1 order", async () => {
   // The fake findMany returns 2 rows when take<=2 (limit=1 → take=2).

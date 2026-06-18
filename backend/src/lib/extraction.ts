@@ -12,6 +12,10 @@ export type ExtractionSource =
   | { kind: "text"; body: string }
   | { kind: "binary"; bytes: Uint8Array; mimeType: string };
 
+export interface ExtractionContext {
+  partCode: string | null;
+}
+
 // Gemini content parts (the fallback provider's wire format).
 export type ContentPart =
   | { text: string }
@@ -21,7 +25,7 @@ export type ContentPart =
 export interface LlmProvider {
   name: "openai" | "gemini";
   model: string;
-  generate(source: ExtractionSource, today: string): Promise<{ text: string; usage: LlmUsage }>;
+  generate(source: ExtractionSource, today: string, ctx: ExtractionContext): Promise<{ text: string; usage: LlmUsage }>;
 }
 
 /** Minimal logger surface; the real pino logger satisfies it. */
@@ -46,6 +50,8 @@ export interface ExtractionResult {
   orderNumberGrounded: boolean;
   deliveryGrounded: boolean;
   status: "extracted" | "needs_review";
+  isOffer: boolean;
+  price: string | null;
   // Token usage of the LLM call that produced this result (for metering).
   usage?: LlmUsage;
 }
@@ -58,6 +64,8 @@ interface ParsedFields {
   // Verbatim source spans the model claims it extracted each value from.
   orderNumberQuote: string | null;
   deliveryQuote: string | null;
+  isOffer: boolean;
+  price: string | null;
 }
 
 // ---- Prompts (loaded once from backend/prompts, outside dist/) ----
@@ -67,11 +75,11 @@ const TEXT_PROMPT = readFileSync(join(PROMPT_DIR, "extraction-text.md"), "utf8")
 const BINARY_PROMPT = readFileSync(join(PROMPT_DIR, "extraction-binary.md"), "utf8");
 
 /** The instruction text for a source. For text emails the body is appended. */
-function promptText(source: ExtractionSource, today: string): string {
+function promptText(source: ExtractionSource, today: string, ctx: ExtractionContext): string {
   if (source.kind === "text") {
-    return renderTemplate(TEXT_PROMPT, { today }) + source.body;
+    return renderTemplate(TEXT_PROMPT, { today, partCode: ctx.partCode ?? "" }) + source.body;
   }
-  return renderTemplate(BINARY_PROMPT, { today });
+  return renderTemplate(BINARY_PROMPT, { today, partCode: ctx.partCode ?? "" });
 }
 
 // ---- OpenAI (primary) ----
@@ -92,14 +100,16 @@ const OPENAI_RESPONSE_FORMAT = {
         deliveryLatest: { type: ["string", "null"] },
         orderNumberQuote: { type: ["string", "null"] },
         deliveryQuote: { type: ["string", "null"] },
+        isOffer: { type: "boolean" },
+        price: { type: ["string", "null"] },
       },
-      required: ["orderNumber", "deliveryTime", "deliveryEarliest", "deliveryLatest", "orderNumberQuote", "deliveryQuote"],
+      required: ["orderNumber", "deliveryTime", "deliveryEarliest", "deliveryLatest", "orderNumberQuote", "deliveryQuote", "isOffer", "price"],
     },
   },
 } as const;
 
-function openaiContent(source: ExtractionSource, today: string): OpenAI.Chat.Completions.ChatCompletionContentPart[] {
-  const text = promptText(source, today);
+function openaiContent(source: ExtractionSource, today: string, ctx: ExtractionContext): OpenAI.Chat.Completions.ChatCompletionContentPart[] {
+  const text = promptText(source, today, ctx);
   if (source.kind === "text") {
     return [{ type: "text", text }];
   }
@@ -127,11 +137,11 @@ const openaiProvider: LlmProvider = {
   get model() {
     return process.env.OPENAI_MODEL ?? "gpt-5.4-mini";
   },
-  async generate(source, today) {
+  async generate(source, today, ctx) {
     const model = this.model;
     const response = await getOpenAI().chat.completions.create({
       model,
-      messages: [{ role: "user", content: openaiContent(source, today) }],
+      messages: [{ role: "user", content: openaiContent(source, today, ctx) }],
       response_format: OPENAI_RESPONSE_FORMAT,
     });
     return {
@@ -148,8 +158,8 @@ const openaiProvider: LlmProvider = {
 
 // ---- Gemini (fallback) ----
 
-function geminiParts(source: ExtractionSource, today: string): ContentPart[] {
-  const text = promptText(source, today);
+function geminiParts(source: ExtractionSource, today: string, ctx: ExtractionContext): ContentPart[] {
+  const text = promptText(source, today, ctx);
   if (source.kind === "text") {
     return [{ text }];
   }
@@ -165,12 +175,12 @@ const geminiProvider: LlmProvider = {
   get model() {
     return process.env.GEMINI_MODEL ?? "gemini-2.5-flash";
   },
-  async generate(source, today) {
+  async generate(source, today, ctx) {
     const model = this.model;
     const ai = (geminiClient ??= new GoogleGenAI({ apiKey: process.env.GOOGLE_LLM_API_KEY! }));
     const response = await ai.models.generateContent({
       model,
-      contents: geminiParts(source, today),
+      contents: geminiParts(source, today, ctx),
       config: {
         responseMimeType: "application/json",
         responseSchema: {
@@ -182,6 +192,8 @@ const geminiProvider: LlmProvider = {
             deliveryLatest: { type: Type.STRING, nullable: true },
             orderNumberQuote: { type: Type.STRING, nullable: true },
             deliveryQuote: { type: Type.STRING, nullable: true },
+            isOffer: { type: Type.BOOLEAN, nullable: true },
+            price: { type: Type.STRING, nullable: true },
           },
         },
       },
@@ -211,16 +223,17 @@ const defaultDeps: ExtractionDeps = {
 async function generateWithFallback(
   deps: ExtractionDeps,
   source: ExtractionSource,
-  today: string
+  today: string,
+  ctx: ExtractionContext
 ): Promise<{ parsed: ParsedFields; usage: LlmUsage }> {
   try {
-    const { text, usage } = await deps.primary.generate(source, today);
+    const { text, usage } = await deps.primary.generate(source, today, ctx);
     const parsed = JSON.parse(text) as ParsedFields;
     deps.logger.info({ provider: deps.primary.name, model: deps.primary.model }, "llm extraction");
     return { parsed, usage };
   } catch (err) {
     deps.logger.warn({ provider: deps.primary.name, err }, "llm primary failed; using fallback");
-    const { text, usage } = await deps.fallback.generate(source, today);
+    const { text, usage } = await deps.fallback.generate(source, today, ctx);
     const parsed = JSON.parse(text) as ParsedFields;
     deps.logger.info({ provider: deps.fallback.name, model: deps.fallback.model }, "llm extraction (fallback)");
     return { parsed, usage };
@@ -236,9 +249,10 @@ function parseIsoDate(s: string): Date | null {
 export async function extractOrderInfo(
   source: ExtractionSource,
   today: string,
+  ctx: ExtractionContext = { partCode: null },
   deps: ExtractionDeps = defaultDeps
 ): Promise<ExtractionResult> {
-  const { parsed, usage } = await generateWithFallback(deps, source, today);
+  const { parsed, usage } = await generateWithFallback(deps, source, today, ctx);
 
   const orderNumber = parsed.orderNumber || null;
 
@@ -260,9 +274,12 @@ export async function extractOrderInfo(
   const orderNumberGrounded = body === null ? true : quoteInBody(parsed.orderNumberQuote, body);
   const deliveryGrounded = body === null ? true : quoteInBody(parsed.deliveryQuote, body);
 
+  const isOffer = parsed.isOffer === true;
+  const price = parsed.price || null;
+
   const status: ExtractionResult["status"] =
     orderNumber && deliveryEarliest ? "extracted" : "needs_review";
-  return { orderNumber, deliveryTime, deliveryEarliest, deliveryLatest, orderNumberGrounded, deliveryGrounded, status, usage };
+  return { orderNumber, deliveryTime, deliveryEarliest, deliveryLatest, orderNumberGrounded, deliveryGrounded, status, isOffer, price, usage };
 }
 
 export function mergeMissing(
@@ -278,7 +295,9 @@ export function mergeMissing(
     deliveryLatest = extra.deliveryLatest;
     deliveryGrounded = extra.deliveryGrounded;
   }
+  const isOffer = base.isOffer || extra.isOffer;
+  const price = base.price ?? extra.price;
   const status: ExtractionResult["status"] =
     orderNumber && deliveryEarliest ? "extracted" : "needs_review";
-  return { orderNumber, deliveryTime, deliveryEarliest, deliveryLatest, orderNumberGrounded, deliveryGrounded, status };
+  return { orderNumber, deliveryTime, deliveryEarliest, deliveryLatest, orderNumberGrounded, deliveryGrounded, status, isOffer, price };
 }
