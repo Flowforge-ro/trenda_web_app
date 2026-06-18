@@ -152,7 +152,9 @@ export async function listMessagesSince(
 
   const MAX_PAGES = 5;
   const messages: GraphMessage[] = [];
-  let url: string | undefined = `https://graph.microsoft.com/v1.0/me/messages?${query}`;
+  // Inbox only: /me/messages spans every folder (incl. Sent), which would meter
+  // the app's own outgoing mail and unrelated items as "reads".
+  let url: string | undefined = `https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages?${query}`;
   for (let page = 0; page < MAX_PAGES && url; page++) {
     const res: Response = await fetch(url, {
       headers: {

@@ -9,6 +9,7 @@ import {
 import { NewOrderDialog } from "@/components/orders/new-order-dialog";
 import { OrderReviewDialog } from "@/components/orders/order-review-dialog";
 import { OfferDialog } from "@/components/orders/offer-dialog";
+import { FlagOrderButton } from "@/components/orders/flag-order-button";
 import { cn } from "@/lib/utils";
 import { CheckCircle2, RotateCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -166,7 +167,10 @@ export function OrdersPage() {
                     {o.offerPrice ?? "—"}
                   </TableCell>
                   <TableCell className="px-4 py-3 text-right">
-                    <CloseOrderButton order={o} />
+                    <div className="flex items-center justify-end gap-1">
+                      <FlagOrderButton order={o} />
+                      <CloseOrderButton order={o} />
+                    </div>
                   </TableCell>
                 </TableRow>
               ))

@@ -10,6 +10,7 @@ import { apiFetch } from "@/lib/http";
 import { logAction } from "@/lib/logger";
 import { OrgsTab } from "./admin-orgs";
 import { LogsTab } from "./logs";
+import { FlaggedOrdersTab } from "./admin-flagged";
 
 async function logout() {
   logAction("logout");
@@ -63,7 +64,7 @@ function ChangePasswordDialog() {
   );
 }
 
-type Tab = "orgs" | "logs";
+type Tab = "orgs" | "logs" | "flagged";
 
 function TabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
@@ -98,10 +99,11 @@ export function SuperadminPanel() {
 
       <nav className="mb-6 flex gap-6 border-b border-gray-200">
         <TabButton active={tab === "orgs"} onClick={() => setTab("orgs")}>Organizații</TabButton>
+        <TabButton active={tab === "flagged"} onClick={() => setTab("flagged")}>Comenzi semnalate</TabButton>
         <TabButton active={tab === "logs"} onClick={() => setTab("logs")}>Loguri</TabButton>
       </nav>
 
-      {tab === "orgs" ? <OrgsTab /> : <LogsTab />}
+      {tab === "orgs" ? <OrgsTab /> : tab === "flagged" ? <FlaggedOrdersTab /> : <LogsTab />}
     </div>
   );
 }

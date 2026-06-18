@@ -27,7 +27,7 @@ const orgUser = {
   passwordHash: "",
 };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 let app: any;
 
 before(async () => {

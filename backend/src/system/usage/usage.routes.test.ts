@@ -12,7 +12,7 @@ import { hashPassword } from "../../lib/password.js";
 const adminUser = { id: "u-adm", email: "adm@example.com", name: "Adm", role: "admin", orgId: "o1", passwordHash: "" };
 const superUser = { id: "u-sa", email: "sa@example.com", name: "SA", role: "superadmin", orgId: null as string | null, passwordHash: "" };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 let app: any;
 let adminCookie: string;
 let superCookie: string;

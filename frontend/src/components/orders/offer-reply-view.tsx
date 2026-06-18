@@ -7,16 +7,19 @@ function AttachmentView({ orderId, att }: { orderId: string; att: ReviewAttachme
     <div className="rounded-md border border-gray-200 p-2">
       <div className="mb-1 flex items-center justify-between gap-2">
         <span className="truncate text-xs font-medium text-foreground">{att.name}</span>
-        <a href={url} target="_blank" rel="noreferrer" className="text-xs text-primary underline">
-          Descarcă
-        </a>
+        <div className="flex shrink-0 items-center gap-3">
+          {type === "application/pdf" ? (
+            <a href={url} target="_blank" rel="noreferrer" className="text-xs text-primary underline">
+              Deschide în tab nou
+            </a>
+          ) : null}
+          <a href={url} download={att.name} className="text-xs text-primary underline">
+            Descarcă
+          </a>
+        </div>
       </div>
       {type === "application/pdf" ? (
-        <object data={url} type="application/pdf" className="h-96 w-full">
-          <a href={url} target="_blank" rel="noreferrer" className="text-xs underline">
-            Deschide PDF
-          </a>
-        </object>
+        <iframe src={url} title={att.name} className="h-[32rem] w-full rounded border border-gray-200" />
       ) : type.startsWith("image/") ? (
         <img src={url} alt={att.name} className="max-h-96 w-auto" />
       ) : null}

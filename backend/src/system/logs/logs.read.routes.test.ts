@@ -18,11 +18,11 @@ const logRow = {
   requestId: "r1", userId: null, orgId: "O1", url: null, userAgent: null, createdAt: new Date("2026-06-15T00:00:00Z"),
 };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 let app: any;
 let adminCookie: string;
 let superadminCookie: string;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 let lastFindManyArgs: any = null;
 
 before(async () => {
@@ -42,7 +42,7 @@ before(async () => {
         Promise.resolve({ id: where.id, name: "Org One", suspendedAt: null }),
     },
     log: {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       findMany: (args: any) => { lastFindManyArgs = args; return Promise.resolve([logRow]); },
     },
   };

@@ -58,6 +58,49 @@ export async function getReviewAttachment(
   }
 }
 
+// ---- Superadmin: cross-org attachment access for flagged orders ----
+// Scoped to flagged orders so the superadmin endpoints never expose arbitrary
+// mailbox content. Attachments are fetched live from Graph (never persisted).
+
+export async function getFlaggedOrderAttachments(
+  orderId: string,
+  deps: ReviewDeps = defaultDeps
+): Promise<AttachmentMeta[] | null> {
+  const order = await deps.prisma.order.findFirst({
+    where: { id: orderId, flaggedAt: { not: null } },
+    ...latestReplyArgs,
+  });
+  if (!order || order.replies.length === 0) return null;
+  const reply = order.replies[0];
+  if (!reply.hasAttachments) return [];
+  const token = await getMailboxAccessToken(deps, order.mailboxId);
+  if (!token) return null;
+  try {
+    return await deps.listAttachmentMeta(token, reply.graphMessageId);
+  } catch {
+    return null;
+  }
+}
+
+export async function getFlaggedOrderAttachment(
+  orderId: string,
+  attachmentId: string,
+  deps: ReviewDeps = defaultDeps
+): Promise<FileAttachment | null> {
+  const order = await deps.prisma.order.findFirst({
+    where: { id: orderId, flaggedAt: { not: null } },
+    ...latestReplyArgs,
+  });
+  if (!order || order.replies.length === 0) return null;
+  const token = await getMailboxAccessToken(deps, order.mailboxId);
+  if (!token) return null;
+  try {
+    return await deps.getAttachmentBytes(token, order.replies[0].graphMessageId, attachmentId);
+  } catch {
+    return null;
+  }
+}
+
 const dateStr = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "expected YYYY-MM-DD");
 
 export const reviewSaveSchema = z

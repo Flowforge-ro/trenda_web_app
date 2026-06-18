@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createOrder, resendOrderEmail, listOrders, closeOrder, acceptOffer, rejectOffer, type OrderDeps } from "./orders.service.js";
+import { createOrder, resendOrderEmail, listOrders, closeOrder, acceptOffer, rejectOffer, flagOrder, unflagOrder, type OrderDeps } from "./orders.service.js";
 
 const input = { vendorEmail: "f@ex.ro", chassisSeries: "WVW001", partCode: "Filtru", mailboxId: "M1", registrationNumber: "B-123-XYZ" };
 
@@ -28,6 +28,7 @@ function makeDeps(overrides: Partial<OrderDeps> = {}): OrderDeps {
     renderStatusRequest: () => "BODY",
     renderOfferAcceptance: () => "OFFER_BODY",
     recordUsage: (async () => {}) as any,
+    now: () => new Date("2026-06-17T12:00:00Z"), // Wednesday, fixed for deterministic re-anchoring
     ...overrides,
   };
 }
@@ -151,6 +152,69 @@ test("acceptOffer emails vendor and sets accepted", async () => {
   assert.equal(order!.replyStatus, "accepted");
 });
 
+// Drive acceptOffer for an offer_pending order with a given deliveryTime and
+// accept-day clock; return the `data` passed to order.update.
+async function acceptWith(deliveryTime: string | null, nowIso: string): Promise<any> {
+  let updateData: any = null;
+  const deps = makeDeps({
+    now: () => new Date(nowIso),
+    prisma: {
+      mailbox: {
+        findFirst: async ({ where }: any) =>
+          where.id === "M1" && where.orgId === "O1" && where.type === "vendor_facing" ? { id: "M1" } : null,
+        findUnique: async () => ({ encryptedRefreshToken: "enc" }),
+        update: async () => ({}),
+      },
+      order: {
+        create: async ({ data }: any) => ({ id: "ord1", ...data }),
+        update: async ({ where, data }: any) => { updateData = data; return { id: where.id, ...data }; },
+        findFirst: async ({ where }: any) =>
+          where.orgId === "O1"
+            ? { id: where.id, orgId: "O1", replyStatus: "offer_pending", deliveryTime, ...input }
+            : null,
+        findMany: async () => [],
+      },
+    } as any,
+  });
+  const order = await acceptOffer("O1", "ord1", deps);
+  assert.ok(order);
+  assert.equal(updateData.replyStatus, "accepted");
+  return updateData;
+}
+
+test("acceptOffer re-anchors a calendar lead time to the accept date", async () => {
+  // "3 zile" from Wed 2026-06-17 = Sat 2026-06-20 (calendar, no weekend skip).
+  const d = await acceptWith("3 zile", "2026-06-17T12:00:00Z");
+  assert.equal(d.deliveryEarliest.toISOString().slice(0, 10), "2026-06-20");
+  assert.equal(d.deliveryLatest.toISOString().slice(0, 10), "2026-06-20");
+});
+
+test("acceptOffer re-anchors a working-day range to the accept date", async () => {
+  // "5-7 zile lucrătoare" from Wed 06-17 = 06-24 .. 06-26.
+  const d = await acceptWith("5-7 zile lucrătoare", "2026-06-17T12:00:00Z");
+  assert.equal(d.deliveryEarliest.toISOString().slice(0, 10), "2026-06-24");
+  assert.equal(d.deliveryLatest.toISOString().slice(0, 10), "2026-06-26");
+});
+
+test("acceptOffer re-anchors correctly when accepted on a weekend", async () => {
+  // Accept on Sat 2026-06-20; "5 zile lucrătoare" -> next 5 weekdays = Fri 06-26.
+  const d = await acceptWith("5 zile lucrătoare", "2026-06-20T12:00:00Z");
+  assert.equal(d.deliveryEarliest.toISOString().slice(0, 10), "2026-06-26");
+  assert.equal(d.deliveryLatest.toISOString().slice(0, 10), "2026-06-26");
+});
+
+test("acceptOffer leaves an absolute delivery date untouched", async () => {
+  const d = await acceptWith("20 iunie", "2026-06-17T12:00:00Z");
+  assert.equal("deliveryEarliest" in d, false);
+  assert.equal("deliveryLatest" in d, false);
+});
+
+test("acceptOffer does not set delivery dates when deliveryTime is null", async () => {
+  const d = await acceptWith(null, "2026-06-17T12:00:00Z");
+  assert.equal("deliveryEarliest" in d, false);
+  assert.equal("deliveryLatest" in d, false);
+});
+
 test("acceptOffer returns null when order is not offer_pending", async () => {
   const deps = makeDeps({
     prisma: {
@@ -200,4 +264,58 @@ test("rejectOffer closes the order and marks rejected", async () => {
   assert.ok(order);
   assert.equal(order!.replyStatus, "rejected");
   assert.ok(order!.closedAt instanceof Date);
+});
+
+// Build deps whose order.findFirst is org-scoped and whose update captures `data`.
+function flagDeps(): { deps: OrderDeps; captured: () => any } {
+  let updateData: any = null;
+  const deps = makeDeps({
+    now: () => new Date("2026-06-17T12:00:00Z"),
+    prisma: {
+      order: {
+        update: async ({ where, data }: any) => { updateData = data; return { id: where.id, ...data }; },
+        findFirst: async ({ where }: any) =>
+          where.orgId === "O1" ? { id: where.id, orgId: "O1", ...input } : null,
+      },
+    } as any,
+  });
+  return { deps, captured: () => updateData };
+}
+
+test("flagOrder records flaggedAt, flaggedBy and reason", async () => {
+  const { deps, captured } = flagDeps();
+  const order = await flagOrder("O1", "ord1", "U7", "preț greșit", deps);
+  assert.ok(order);
+  const d = captured();
+  assert.deepEqual(d.flaggedAt, new Date("2026-06-17T12:00:00Z"));
+  assert.equal(d.flaggedByUserId, "U7");
+  assert.equal(d.flagReason, "preț greșit");
+});
+
+test("flagOrder stores null reason when omitted or blank", async () => {
+  const { deps, captured } = flagDeps();
+  await flagOrder("O1", "ord1", "U7", undefined, deps);
+  assert.equal(captured().flagReason, null);
+  await flagOrder("O1", "ord1", "U7", "   ", deps);
+  assert.equal(captured().flagReason, null);
+});
+
+test("flagOrder returns null for an order outside the org", async () => {
+  const { deps } = flagDeps();
+  assert.equal(await flagOrder("OTHER", "ord1", "U7", "x", deps), null);
+});
+
+test("unflagOrder clears the flag fields", async () => {
+  const { deps, captured } = flagDeps();
+  const order = await unflagOrder("O1", "ord1", deps);
+  assert.ok(order);
+  const d = captured();
+  assert.equal(d.flaggedAt, null);
+  assert.equal(d.flaggedByUserId, null);
+  assert.equal(d.flagReason, null);
+});
+
+test("unflagOrder returns null for an order outside the org", async () => {
+  const { deps } = flagDeps();
+  assert.equal(await unflagOrder("OTHER", "ord1", deps), null);
 });

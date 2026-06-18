@@ -6,6 +6,7 @@ import { renderStatusRequest, renderOfferAcceptance } from "../../lib/template.j
 import { getMailboxAccessToken } from "../../lib/mailbox-token.js";
 import { logError } from "../../lib/db-log.js";
 import { recordUsage } from "../../lib/usage.js";
+import { resolveRelativeDelivery } from "../../lib/extraction.js";
 import type { Order } from "../../generated/prisma/client.js";
 
 export const orderInputSchema = z.object({
@@ -26,6 +27,7 @@ export interface OrderDeps {
   renderStatusRequest: typeof renderStatusRequest;
   renderOfferAcceptance: typeof renderOfferAcceptance;
   recordUsage: typeof recordUsage;
+  now: () => Date;
 }
 
 let defaultDeps: OrderDeps = {
@@ -37,6 +39,7 @@ let defaultDeps: OrderDeps = {
   renderStatusRequest,
   renderOfferAcceptance,
   recordUsage,
+  now: () => new Date(),
 };
 
 /** Override deps in tests only. Call with the original object to restore. */
@@ -143,7 +146,16 @@ export async function acceptOffer(orgId: string, orderId: string, deps: OrderDep
     body: deps.renderOfferAcceptance({ partCode: order.partCode, chassisSeries: order.chassisSeries }),
   });
   await deps.recordUsage({ orgId: order.orgId, kind: "email_write", emails: 1 });
-  return deps.prisma.order.update({ where: { id: orderId }, data: { replyStatus: "accepted" } });
+  // A relative lead time ("5-7 zile lucrătoare") only starts once the offer is
+  // accepted, so re-anchor the delivery window to now. Absolute dates stay put.
+  const reanchored = resolveRelativeDelivery(order.deliveryTime, deps.now());
+  return deps.prisma.order.update({
+    where: { id: orderId },
+    data: {
+      replyStatus: "accepted",
+      ...(reanchored ? { deliveryEarliest: reanchored.earliest, deliveryLatest: reanchored.latest } : {}),
+    },
+  });
 }
 
 export async function rejectOffer(orgId: string, orderId: string, deps: OrderDeps = defaultDeps) {
@@ -152,5 +164,78 @@ export async function rejectOffer(orgId: string, orderId: string, deps: OrderDep
   return deps.prisma.order.update({
     where: { id: orderId },
     data: { replyStatus: "rejected", closedAt: order.closedAt ?? new Date() },
+  });
+}
+
+export const flagOrderSchema = z.object({
+  reason: z.string().trim().max(500).optional(),
+});
+export type FlagOrderInput = z.infer<typeof flagOrderSchema>;
+
+export async function flagOrder(
+  orgId: string,
+  orderId: string,
+  userId: string,
+  reason: string | undefined,
+  deps: OrderDeps = defaultDeps
+) {
+  const order = await deps.prisma.order.findFirst({ where: { id: orderId, orgId } });
+  if (!order) return null;
+  return deps.prisma.order.update({
+    where: { id: orderId },
+    data: { flaggedAt: deps.now(), flaggedByUserId: userId, flagReason: reason?.trim() || null },
+  });
+}
+
+export async function unflagOrder(orgId: string, orderId: string, deps: OrderDeps = defaultDeps) {
+  const order = await deps.prisma.order.findFirst({ where: { id: orderId, orgId } });
+  if (!order) return null;
+  return deps.prisma.order.update({
+    where: { id: orderId },
+    data: { flaggedAt: null, flaggedByUserId: null, flagReason: null },
+  });
+}
+
+/**
+ * Superadmin: every flagged order across all organizations, newest first.
+ * Includes the parsed email (latest reply) and the full extracted result so the
+ * dashboard can show the source next to what the system got wrong.
+ */
+export async function listFlaggedOrders(db: typeof prisma = prisma) {
+  return db.order.findMany({
+    where: { flaggedAt: { not: null } },
+    orderBy: { flaggedAt: "desc" },
+    select: {
+      id: true,
+      orderNumber: true,
+      partCode: true,
+      chassisSeries: true,
+      registrationNumber: true,
+      vendorEmail: true,
+      offerPrice: true,
+      deliveryTime: true,
+      deliveryEarliest: true,
+      deliveryLatest: true,
+      status: true,
+      replyStatus: true,
+      orderNumberConfidence: true,
+      deliveryConfidence: true,
+      reviewReasons: true,
+      flaggedAt: true,
+      flagReason: true,
+      org: { select: { id: true, name: true } },
+      flaggedBy: { select: { id: true, email: true, name: true } },
+      replies: {
+        orderBy: { receivedDateTime: "desc" },
+        take: 1,
+        select: {
+          fromEmail: true,
+          subject: true,
+          body: true,
+          receivedDateTime: true,
+          hasAttachments: true,
+        },
+      },
+    },
   });
 }

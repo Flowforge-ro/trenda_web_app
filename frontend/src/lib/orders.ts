@@ -19,6 +19,8 @@ export interface Order {
   createdAt: string;
   registrationNumber: string | null;
   offerPrice: string | null;
+  flaggedAt: string | null;
+  flagReason: string | null;
 }
 
 export interface NewOrderPayload {
@@ -102,25 +104,40 @@ export function useCloseOrder() {
   });
 }
 
-function daysUntil(iso: string, now: Date): number {
-  const target = new Date(iso);
-  const startOfDay = (d: Date) => Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
-  return Math.round((startOfDay(target) - startOfDay(now)) / 86_400_000);
+const startOfDayUTC = (d: Date) => Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+
+/**
+ * Signed count of working days (Mon–Fri) from `now` to the target date: the
+ * countdown freezes over weekends instead of bleeding calendar days. Negative
+ * once the target is in the past. Weekends themselves count as 0.
+ */
+function businessDaysUntil(iso: string, now: Date): number {
+  const target = startOfDayUTC(new Date(iso));
+  let cur = startOfDayUTC(now);
+  if (target === cur) return 0;
+  const forward = target > cur;
+  const step = forward ? 86_400_000 : -86_400_000;
+  let count = 0;
+  while (cur !== target) {
+    cur += step;
+    const dow = new Date(cur).getUTCDay();
+    if (dow !== 0 && dow !== 6) count += forward ? 1 : -1;
+  }
+  return count;
 }
 
-/** Human countdown to delivery, in Romanian. Returns "—" when no dates are known. */
+/** Human countdown to delivery, in Romanian, counting only working days. Returns "—" when no dates are known. */
 export function formatDeliveryCountdown(
   earliest: string | null,
   latest: string | null,
   now: Date = new Date()
 ): string {
   if (!earliest || !latest) return "—";
-  const de = daysUntil(earliest, now);
-  const dl = daysUntil(latest, now);
+  const de = businessDaysUntil(earliest, now);
+  const dl = businessDaysUntil(latest, now);
   if (de === dl) {
     if (de < 0) return "întârziat";
     if (de === 0) return "azi";
-    if (de === 1) return "mâine";
     return `${de} zile`;
   }
   if (dl < 0) return "întârziat";
@@ -187,8 +204,9 @@ export function useOrderReview(id: string, enabled: boolean) {
 }
 
 export function attachmentUrl(orderId: string, attachmentId: string): string {
-  // Graph attachment ids can contain URL-special chars; encode the path segment.
-  return `${API_BASE}/orders/${orderId}/attachments/${encodeURIComponent(attachmentId)}`;
+  // Graph attachment ids contain '/', '+', '='; a path segment 404s on the
+  // encoded slash, so pass the id as a query param instead.
+  return `${API_BASE}/orders/${orderId}/attachments?attachmentId=${encodeURIComponent(attachmentId)}`;
 }
 
 async function saveReview(args: { id: string; payload: SaveReviewPayload }): Promise<{ order: Order }> {
@@ -231,6 +249,44 @@ export function useRejectOffer() {
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["orders"] });
       logAction("order.offer.reject", { orderId: data.order.id });
+    },
+  });
+}
+
+async function flagOrder(args: { id: string; reason?: string }): Promise<{ order: Order }> {
+  const res = await apiFetch(`/orders/${args.id}/flag`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reason: args.reason }),
+  });
+  if (!res.ok) throw new Error("Semnalarea comenzii a eșuat");
+  return res.json();
+}
+
+export function useFlagOrder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: flagOrder,
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["orders"] });
+      logAction("order.flag", { orderId: data.order.id });
+    },
+  });
+}
+
+async function unflagOrder(id: string): Promise<{ order: Order }> {
+  const res = await apiFetch(`/orders/${id}/unflag`, { method: "POST" });
+  if (!res.ok) throw new Error("Eliminarea semnalării a eșuat");
+  return res.json();
+}
+
+export function useUnflagOrder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: unflagOrder,
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["orders"] });
+      logAction("order.unflag", { orderId: data.order.id });
     },
   });
 }

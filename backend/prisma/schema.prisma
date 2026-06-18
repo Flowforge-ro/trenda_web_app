@@ -35,6 +35,7 @@ model User {
   updatedAt    DateTime      @updatedAt
   mailboxes    Mailbox[]     @relation("ConnectedBy")
   orders       Order[]       @relation("CreatedBy")
+  flaggedOrders Order[]      @relation("FlaggedBy")
 }
 
 model Mailbox {
@@ -80,12 +81,18 @@ model Order {
   orderNumberConfidence String?    // "high" | "low" — deterministic extraction confidence
   deliveryConfidence    String?    // "high" | "low"
   reviewReasons         String?    // newline-joined Romanian reasons shown in the review UI
+  // User-reported "this order is wrong" flag, surfaced on the superadmin dashboard.
+  flaggedAt           DateTime?
+  flaggedByUserId     String?
+  flaggedBy           User?        @relation("FlaggedBy", fields: [flaggedByUserId], references: [id])
+  flagReason          String?
   createdAt           DateTime     @default(now())
   updatedAt           DateTime     @updatedAt
   replies             OrderReply[]
 
   @@index([orgId, createdAt, id]) // listOrders cursor pagination
   @@index([replyStatus]) // poll extract phase
+  @@index([flaggedAt]) // superadmin flagged-orders list
 }
 
 model OrderReply {

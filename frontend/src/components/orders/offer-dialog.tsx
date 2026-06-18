@@ -31,7 +31,7 @@ export function OfferDialog({ order }: { order: Order }) {
       >
         Vezi oferta
       </DialogTrigger>
-      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+      <DialogContent className="max-h-[90vh] sm:max-w-4xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Ofertă furnizor</DialogTitle>
         </DialogHeader>
