@@ -79,7 +79,7 @@ await app.register(fastifyOauth2, {
     },
     auth: {
       authorizeHost: "https://login.microsoftonline.com",
-      authorizePath: `/${process.env.ENTRA_TENANT_ID}/oauth2/v2.0/authorize`,
+      authorizePath: `/${process.env.ENTRA_TENANT_ID}/oauth2/v2.0/authorize?prompt=select_account`,
       tokenHost: "https://login.microsoftonline.com",
       tokenPath: `/${process.env.ENTRA_TENANT_ID}/oauth2/v2.0/token`,
     },
