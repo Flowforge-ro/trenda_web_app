@@ -1,0 +1,28 @@
+{
+	email contactflowforgesolutions@gmail.com
+}
+
+app.flowforge.ro {
+	encode zstd gzip
+
+	# API: strip the /api prefix and forward to the backend container.
+	# The backend's routes live at the root (/orders, /auth/..., /health, ...),
+	# so handle_path removes /api before proxying.
+	handle_path /api/* {
+		reverse_proxy backend:3000
+	}
+
+	# Everything else is the SPA. try_files falls back to index.html so client-side
+	# routes (deep links) resolve.
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+
+	# DNS-01 challenge via Cloudflare, so issuance works with the orange-cloud proxy on.
+	tls {
+		dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+		resolvers 1.1.1.1
+	}
+}

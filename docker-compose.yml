@@ -7,14 +7,38 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-trenda}
       POSTGRES_DB: ${POSTGRES_DB:-trenda}
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      # PG 18+ expects the mount at /var/lib/postgresql (data lands in a
+      # version-specific subdir, enabling in-place pg_upgrade later).
+      - pgdata:/var/lib/postgresql
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      # Bound to localhost only — reachable for psql on the box, not from the internet.
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-trenda} -d ${POSTGRES_DB:-trenda}"]
       interval: 5s
       timeout: 5s
       retries: 10
+
+  # One-shot job: apply migrations (and optionally seed) before the app starts.
+  # Built from the backend "builder" stage because that's where the prisma CLI
+  # and tsx live — the long-running backend image carries prod deps only.
+  migrate:
+    build:
+      context: ./backend
+      target: builder
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - ./backend/.env
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-trenda}:${POSTGRES_PASSWORD:-trenda}@db:5432/${POSTGRES_DB:-trenda}
+      RUN_SEED: ${RUN_SEED:-false}
+    command:
+      - sh
+      - -c
+      - 'npx prisma migrate deploy && if [ "$$RUN_SEED" = "true" ]; then npx tsx prisma/seed.ts; fi'
+    restart: "no"
 
   backend:
     build:
@@ -23,16 +47,38 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     env_file:
       - ./backend/.env
     environment:
-      # Overrides whatever is in backend/.env so the app talks to the db service.
+      # These override the dev values in backend/.env for the deployed stack.
       DATABASE_URL: postgres://${POSTGRES_USER:-trenda}:${POSTGRES_PASSWORD:-trenda}@db:5432/${POSTGRES_DB:-trenda}
       NODE_ENV: production
       PORT: 3000
-      RUN_SEED: ${RUN_SEED:-false}
+      FRONTEND_ORIGIN: https://${APP_DOMAIN:-app.flowforge.ro}
+      MICROSOFT_REDIRECT_URI: https://${APP_DOMAIN:-app.flowforge.ro}/api/auth/microsoft/callback
+    # No public port: only Caddy (same compose network) reaches the backend.
+    expose:
+      - "3000"
+
+  caddy:
+    build:
+      context: .
+      dockerfile: deploy/caddy.Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - backend
     ports:
-      - "${BACKEND_PORT:-3000}:3000"
+      - "80:80"
+      - "443:443"
+    environment:
+      CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_API_TOKEN:?set CLOUDFLARE_API_TOKEN in .env}
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
 
 volumes:
   pgdata:
+  caddy_data:
+  caddy_config:
