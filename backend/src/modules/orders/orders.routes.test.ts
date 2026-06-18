@@ -70,6 +70,26 @@ const fakeOfferOrder = {
   replyStatus: "offer_pending" as string | null,
 };
 
+// Order carrying a parsed reply, for GET /orders/:id/review happy path.
+// hasAttachments:false keeps getOrderReview from making any Graph call.
+const fakeReviewOrder = {
+  ...fakeOrder,
+  id: "order-review",
+  orderNumberConfidence: "high",
+  deliveryConfidence: "high",
+  reviewReasons: null,
+  replies: [
+    {
+      fromEmail: "vendor@example.com",
+      subject: "Re: comanda",
+      receivedDateTime: new Date("2024-01-02T00:00:00Z"),
+      body: "Disponibil.",
+      hasAttachments: false,
+      graphMessageId: "g-msg-1",
+    },
+  ],
+};
+
 // Fake organization
 const fakeOrg = { id: ORG_ID, name: "Test Org" };
 
@@ -77,7 +97,7 @@ const fakeOrg = { id: ORG_ID, name: "Test Org" };
 // App setup
 // ---------------------------------------------------------------------------
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 let app: any;
 let memberCookie: string;
 let superadminCookie: string;
@@ -117,6 +137,8 @@ before(async () => {
       findFirst({ where }: { where: { id?: string; orgId?: string } }) {
         if (where.id === fakeOfferOrder.id && where.orgId === ORG_ID)
           return Promise.resolve(fakeOfferOrder);
+        if (where.id === fakeReviewOrder.id && where.orgId === ORG_ID)
+          return Promise.resolve(fakeReviewOrder);
         if (where.id === fakeOrder.id && where.orgId === ORG_ID)
           return Promise.resolve(fakeOrder);
         return Promise.resolve(null);
@@ -137,7 +159,7 @@ before(async () => {
       update: () => Promise.resolve({}),
     },
   };
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   setOrderDepsForTests({
     prisma: fakePrismaWithMailbox as any,
     decrypt: (s: string) => s,
@@ -420,4 +442,112 @@ test("GET /orders with limit=1 and two DB rows returns nextCursor and exactly 1 
   assert.equal(body.orders.length, 1, "should return exactly limit=1 order");
   assert.ok(body.nextCursor !== null, "nextCursor should be non-null when more rows exist");
   assert.equal(body.nextCursor, fakeOrder.id, "nextCursor should be the last returned order's id");
+});
+
+// ---------------------------------------------------------------------------
+// GET /orders/:id/review
+// ---------------------------------------------------------------------------
+
+test("GET /orders/:id/review with no reply returns 404", async () => {
+  const res = await app.inject({
+    method: "GET",
+    url: "/orders/no-such-order/review",
+    headers: { cookie: memberCookie },
+  });
+  assert.equal(res.statusCode, 404);
+  assert.deepEqual(res.json(), { error: "No reply to review" });
+});
+
+test("GET /orders/:id/review returns reply + current fields", async () => {
+  const res = await app.inject({
+    method: "GET",
+    url: `/orders/${fakeReviewOrder.id}/review`,
+    headers: { cookie: memberCookie },
+  });
+  assert.equal(res.statusCode, 200);
+  const body = res.json();
+  assert.equal(body.reply.fromEmail, "vendor@example.com");
+  assert.deepEqual(body.attachments, []);
+  assert.ok("current" in body && "confidence" in body);
+});
+
+// ---------------------------------------------------------------------------
+// GET /orders/:id/attachments
+// ---------------------------------------------------------------------------
+
+test("GET /orders/:id/attachments without attachmentId returns 400", async () => {
+  const res = await app.inject({
+    method: "GET",
+    url: `/orders/${fakeOrder.id}/attachments`,
+    headers: { cookie: memberCookie },
+  });
+  assert.equal(res.statusCode, 400);
+  assert.deepEqual(res.json(), { error: "Missing attachmentId" });
+});
+
+test("GET /orders/:id/attachments for unknown order returns 404", async () => {
+  const res = await app.inject({
+    method: "GET",
+    url: "/orders/no-such-order/attachments?attachmentId=A1",
+    headers: { cookie: memberCookie },
+  });
+  assert.equal(res.statusCode, 404);
+  assert.deepEqual(res.json(), { error: "Attachment not found" });
+});
+
+// ---------------------------------------------------------------------------
+// POST /orders/:id/flag and /unflag
+// ---------------------------------------------------------------------------
+
+test("POST /orders/:id/flag returns the updated order", async () => {
+  const res = await app.inject({
+    method: "POST",
+    url: `/orders/${fakeOrder.id}/flag`,
+    headers: { cookie: memberCookie },
+    payload: { reason: "wrong delivery date" },
+  });
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.json().order.id, fakeOrder.id);
+});
+
+test("POST /orders/:id/flag with an over-long reason returns 400", async () => {
+  const res = await app.inject({
+    method: "POST",
+    url: `/orders/${fakeOrder.id}/flag`,
+    headers: { cookie: memberCookie },
+    payload: { reason: "x".repeat(501) },
+  });
+  assert.equal(res.statusCode, 400);
+  assert.equal(res.json().error, "Invalid payload");
+});
+
+test("POST /orders/:id/flag with unknown id returns 404", async () => {
+  const res = await app.inject({
+    method: "POST",
+    url: "/orders/no-such-order/flag",
+    headers: { cookie: memberCookie },
+    payload: {},
+  });
+  assert.equal(res.statusCode, 404);
+  assert.deepEqual(res.json(), { error: "Order not found" });
+});
+
+test("POST /orders/:id/unflag returns the updated order", async () => {
+  const res = await app.inject({
+    method: "POST",
+    url: `/orders/${fakeOrder.id}/unflag`,
+    headers: { cookie: memberCookie },
+  });
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.json().order.id, fakeOrder.id);
+});
+
+test("POST /orders/:id/unflag with unknown id returns 404", async () => {
+  const res = await app.inject({
+    method: "POST",
+    url: "/orders/no-such-order/unflag",
+    headers: { cookie: memberCookie },
+  });
+  assert.equal(res.statusCode, 404);
+  assert.deepEqual(res.json(), { error: "Order not found" });
 });

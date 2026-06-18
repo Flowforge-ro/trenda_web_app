@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createOrganization, listOrganizations, DEFAULT_APPOINTMENT_FIELDS, type OrgDeps } from "./organizations.service.js";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 let lastSeededFields: any[] = [];
 
 function makeDeps(over: Partial<OrgDeps> = {}): OrgDeps {

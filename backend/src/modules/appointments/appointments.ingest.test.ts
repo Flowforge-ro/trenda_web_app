@@ -14,7 +14,7 @@ const MB = {
   lastPolledAt: new Date("2026-06-11T00:00:00Z"), createdAt: new Date("2026-06-01T00:00:00Z"),
 };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 function msg(over: Record<string, any> = {}) {
   return {
     id: "m1",
@@ -27,9 +27,9 @@ function msg(over: Record<string, any> = {}) {
 }
 
 interface State {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   creates: any[]; updates: any[]; replies: any[]; mailboxUpdates: any[];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   extractCalls: any[]; listCalls: number; usage: any[];
 }
 function newState(): State {
@@ -40,17 +40,17 @@ const FILLED: AppointmentExtraction = { intent: "appointment", fields: { nume: "
 
 interface Opts {
   state: State;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   messages?: any[];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   existing?: any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   extractResult?: (opts: { classify: boolean }) => AppointmentExtraction;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   fields?: any[];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   mailboxes?: any[];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   listMessagesSince?: any;
 }
 

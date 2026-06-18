@@ -59,7 +59,7 @@ const fakeMailbox = {
 // App setup
 // ---------------------------------------------------------------------------
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 let app: any;
 let adminCookie: string;
 let memberCookie: string;

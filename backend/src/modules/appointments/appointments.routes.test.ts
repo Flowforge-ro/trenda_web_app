@@ -22,12 +22,12 @@ const APPT_ROWS = [
   { id: "a1", customerEmail: "c@x.ro", status: "collecting", fields: { nume: "Ion", telefon: null }, lastMessageAt: new Date("2026-06-12T10:00:00Z"), createdAt: new Date("2026-06-12T09:00:00Z") },
 ];
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 let app: any;
 let memberCookie: string;
 let adminCookie: string;
 let superCookie: string;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 let lastApptFindMany: any = null;
 
 before(async () => {

@@ -29,7 +29,7 @@ process.env.ENCRYPTION_KEY ??= "0".repeat(64);
  * Call once per test file (in `before()`).  Each test file is its own Node
  * process, so the dynamic import cache is isolated.
  */
-// eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types
+ 
 export async function buildTestApp(fakePrisma: unknown) {
   setPrismaForTests(fakePrisma as PrismaClient);
   const { app } = await import("./app.js");
