@@ -2,6 +2,7 @@ import { mergeMissing, type ExtractionResult } from "../../lib/extraction.js";
 import { scoreConfidence, needsReview } from "../../lib/confidence.js";
 import { recordLlmUsage } from "../../lib/usage.js";
 import { logError } from "../../lib/db-log.js";
+import { logger } from "../../lib/logger.js";
 import type { Order } from "../../generated/prisma/client.js";
 import type { PollDeps, GetToken } from "./poll.types.js";
 
@@ -43,6 +44,19 @@ async function extractForOrder(order: PendingOrder, getToken: GetToken, deps: Po
   });
 
   const today = deps.now().toISOString().slice(0, 10);
+  if (reply?.body) {
+    logger.info(
+      {
+        sentAt: new Date().toISOString(),
+        mode: "order-extract",
+        orderId: order.id,
+        graphMessageId: reply.graphMessageId,
+        hasAttachments: reply.hasAttachments,
+        bodyChars: reply.body.length,
+      },
+      "llm-send: order extract"
+    );
+  }
   let result: ExtractionResult = reply?.body
     ? await deps.extractOrderInfo({ kind: "text", body: reply.body }, today, { partCode: order.partCode })
     : { orderNumber: null, deliveryTime: null, deliveryEarliest: null, deliveryLatest: null, orderNumberGrounded: true, deliveryGrounded: true, status: "needs_review", isOffer: false, price: null };

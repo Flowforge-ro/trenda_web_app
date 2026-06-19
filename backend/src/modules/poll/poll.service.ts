@@ -4,7 +4,7 @@ import { getAccessTokenFromRefreshToken, listMessagesSince, createAndSendMail, l
 import { extractOrderInfo } from "../../lib/extraction.js";
 import { recordUsage } from "../../lib/usage.js";
 import { getMailboxAccessToken } from "../../lib/mailbox-token.js";
-import { fetchMailboxMessages } from "../../lib/mail-poll.js";
+import { fetchMailboxMessages, markSeen } from "../../lib/mail-poll.js";
 import { matchReply, normalizeMessageId } from "./matching.js";
 import { logError } from "../../lib/db-log.js";
 import { extractPending } from "./extraction-worker.js";
@@ -92,14 +92,18 @@ async function pollMailbox(mailboxId: string, orders: MatchableOrder[], deps: Po
 
   const oldestCreatedAt = orders.reduce((min, o) => (o.createdAt < min ? o.createdAt : min), orders[0].createdAt);
   const base = mailbox?.lastPolledAt ?? oldestCreatedAt;
-  const { messages, newest } = await fetchMailboxMessages(deps, accessToken, base, mailbox?.orgId ?? null);
+  const { messages, newest } = await fetchMailboxMessages(deps, accessToken, base, mailbox?.orgId ?? null, mailboxId);
 
   const byMessageId = new Map<string, MatchableOrder>();
   for (const order of orders) {
     if (order.internetMessageId) byMessageId.set(normalizeMessageId(order.internetMessageId), order);
   }
 
+  // Mark messages seen only after the loop completes without throwing: a thrown
+  // ingest leaves nothing marked so the next poll re-fetches and retries.
+  const handled: { id: string; receivedDateTime: string }[] = [];
   for (const message of messages) {
+    handled.push({ id: message.id, receivedDateTime: message.receivedDateTime });
     const order = matchReply(message, byMessageId);
     if (!order) continue;
 
@@ -123,5 +127,6 @@ async function pollMailbox(mailboxId: string, orders: MatchableOrder[], deps: Po
     ]);
   }
 
+  await markSeen(deps, mailboxId, handled);
   await deps.prisma.mailbox.update({ where: { id: mailboxId }, data: { lastPolledAt: newest ?? deps.now() } });
 }

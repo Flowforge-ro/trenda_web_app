@@ -30,7 +30,7 @@ interface State {
    
   creates: any[]; updates: any[]; replies: any[]; mailboxUpdates: any[];
    
-  extractCalls: any[]; listCalls: number; usage: any[];
+  extractCalls: any[]; listCalls: number; usage: any[]; seen?: any[];
 }
 function newState(): State {
   return { creates: [], updates: [], replies: [], mailboxUpdates: [], extractCalls: [], listCalls: 0, usage: [] };
@@ -68,6 +68,19 @@ function makeDeps(opts: Opts): ClientPollDeps {
         findUnique: async () => existing,
         create: async ({ data }: any) => { state.creates.push(data); return { id: "ap1", ...data }; },
         update: async ({ where, data }: any) => { state.updates.push({ id: where.id, ...data }); return {}; },
+      },
+      seenMessage: {
+        findMany: async ({ where }: any) => {
+          const ids: string[] = where?.graphMessageId?.in ?? [];
+          return (state.seen ?? []).filter((s) => ids.includes(s.graphMessageId));
+        },
+        createMany: async ({ data }: any) => {
+          const have = new Set((state.seen ?? []).map((s) => s.graphMessageId));
+          const fresh = data.filter((d: any) => !have.has(d.graphMessageId));
+          (state.seen ??= []).push(...fresh);
+          return { count: fresh.length };
+        },
+        deleteMany: async () => ({ count: 0 }),
       },
     } as any,
     decrypt: () => "r1",
@@ -119,6 +132,20 @@ test("meters a classification event with the intent outcome and email_read", asy
   assert.equal(cls.outcome, "other");
   assert.equal(cls.orgId, "org1");
   assert.ok(state.usage.some((e) => e.kind === "email_read" && e.emails === 1));
+});
+
+test("a message already in the seen-ledger is skipped: no LLM classify, no email_read meter", async () => {
+  const state: State = { ...newState(), seen: [{ mailboxId: "mb1", graphMessageId: "m1", receivedDateTime: new Date("2026-06-12T09:00:00Z") }] };
+  await pollClientMailboxes(makeDeps({ state, extractResult: () => ({ intent: "other", fields: {} }) }));
+  assert.equal(state.extractCalls.length, 0);
+  assert.equal(state.creates.length, 0);
+  assert.equal(state.usage.some((e) => e.kind === "email_read"), false);
+});
+
+test("processing a junk 'other' message records it as seen so it is not re-sent next poll", async () => {
+  const state = newState();
+  await pollClientMailboxes(makeDeps({ state, extractResult: () => ({ intent: "other", fields: {} }) }));
+  assert.deepEqual((state.seen ?? []).map((s) => s.graphMessageId), ["m1"]);
 });
 
 test("reply in known collecting thread completing fields → update complete, no reply, classify:false", async () => {

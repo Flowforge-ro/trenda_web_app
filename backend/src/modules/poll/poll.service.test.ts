@@ -26,7 +26,7 @@ function matchingMessage(): GraphMessage {
   } as GraphMessage;
 }
 
-type State = { orders: any[]; replies: any[]; replyUpdates: any[]; mailboxUpdates: any[]; usage?: any[] };
+type State = { orders: any[]; replies: any[]; replyUpdates: any[]; mailboxUpdates: any[]; usage?: any[]; seen?: any[] };
 
 function makeDeps(state: State, messages: GraphMessage[], overrides: Partial<PollDeps> = {}): PollDeps {
   return {
@@ -64,6 +64,19 @@ function makeDeps(state: State, messages: GraphMessage[], overrides: Partial<Pol
           state.replies.push(data);
           return data;
         },
+      },
+      seenMessage: {
+        findMany: async ({ where }: any) => {
+          const ids: string[] = where?.graphMessageId?.in ?? [];
+          return (state.seen ?? []).filter((s) => ids.includes(s.graphMessageId));
+        },
+        createMany: async ({ data }: any) => {
+          const have = new Set((state.seen ?? []).map((s) => s.graphMessageId));
+          const fresh = data.filter((d: any) => !have.has(d.graphMessageId));
+          (state.seen ??= []).push(...fresh);
+          return { count: fresh.length };
+        },
+        deleteMany: async () => ({ count: 0 }),
       },
       $transaction: async (ops: Promise<unknown>[]) => Promise.all(ops),
     } as any,
@@ -200,6 +213,18 @@ test("ingest phase meters email_read for fetched messages", async () => {
   assert.ok(read);
   assert.equal(read.emails, 1);
   assert.equal(read.orgId, "ORG1");
+});
+
+test("ingest skips a message already in the seen-ledger: no re-meter of email_read", async () => {
+  const state: State = { orders: [ORDER], replies: [], replyUpdates: [], mailboxUpdates: [], seen: [{ mailboxId: "M1", graphMessageId: "MSG1", receivedDateTime: new Date("2026-06-01T10:00:00Z") }] };
+  await pollReplies(makeDeps(state, [matchingMessage()]));
+  assert.equal((state.usage ?? []).some((e) => e.kind === "email_read"), false);
+});
+
+test("ingest records fetched messages in the seen-ledger", async () => {
+  const state: State = { orders: [ORDER], replies: [], replyUpdates: [], mailboxUpdates: [] };
+  await pollReplies(makeDeps(state, [matchingMessage()]));
+  assert.deepEqual((state.seen ?? []).map((s) => s.graphMessageId), ["MSG1"]);
 });
 
 test("extract phase leaves order at reply_received when the extractor throws", async () => {

@@ -6,7 +6,7 @@ import {
   type GraphMessage,
 } from "../../lib/microsoft.js";
 import { getMailboxAccessToken } from "../../lib/mailbox-token.js";
-import { fetchMailboxMessages } from "../../lib/mail-poll.js";
+import { fetchMailboxMessages, markSeen } from "../../lib/mail-poll.js";
 import { decrypt, encrypt } from "../../lib/crypto.js";
 import {
   extractAppointment,
@@ -16,6 +16,7 @@ import {
 } from "../../lib/appointment-extraction.js";
 import { renderMissingFields } from "../../lib/template.js";
 import { logError } from "../../lib/db-log.js";
+import { logger } from "../../lib/logger.js";
 import { recordUsage, recordLlmUsage } from "../../lib/usage.js";
 
 export interface ClientPollDeps {
@@ -83,15 +84,22 @@ async function pollClientMailbox(mailbox: ClientMailbox, deps: ClientPollDeps): 
 
   // First poll starts at mailbox connection time: no historical backfill.
   const base = mailbox.lastPolledAt ?? mailbox.createdAt;
-  const { messages, newest } = await fetchMailboxMessages(deps, accessToken, base, mailbox.orgId);
+  const { messages, newest } = await fetchMailboxMessages(deps, accessToken, base, mailbox.orgId, mailbox.id);
 
+  // Mark a message seen only on successful processing: a thrown classify/extract
+  // (e.g. transient LLM error) stays unmarked so the next poll retries it. Junk
+  // classified "other" persists no appointment, so the ledger is what stops it
+  // being re-sent to the LLM every overlap cycle.
+  const handled: { id: string; receivedDateTime: string }[] = [];
   for (const message of messages) {
     try {
       await processMessage(mailbox, message, fields, accessToken, deps);
+      handled.push({ id: message.id, receivedDateTime: message.receivedDateTime });
     } catch (err) {
       logError("Client message processing failed", err, { mailboxId: mailbox.id, messageId: message.id });
     }
   }
+  await markSeen(deps, mailbox.id, handled);
 
   await deps.prisma.mailbox.update({
     where: { id: mailbox.id },
@@ -125,6 +133,20 @@ async function processMessage(
   const today = deps.now().toISOString().slice(0, 10);
 
   if (!existing) {
+    logger.info(
+      {
+        sentAt: new Date().toISOString(),
+        mode: "classify+extract",
+        mailboxId: mailbox.id,
+        messageId: message.id,
+        conversationId: message.conversationId,
+        from,
+        subject: message.subject ?? null,
+        receivedDateTime: message.receivedDateTime,
+        bodyChars: message.body.content.length,
+      },
+      "llm-send: appointment classify"
+    );
     const result = await deps.extractAppointment(message.body.content, fields, today, { classify: true });
     await recordLlmUsage(mailbox.orgId, result.usage, deps.recordUsage);
     // Classification outcome: appointment vs junk (other).
@@ -151,6 +173,20 @@ async function processMessage(
   }
 
   // Known thread: extraction only (no intent), merge corrections over stored.
+  logger.info(
+    {
+      sentAt: new Date().toISOString(),
+      mode: "extract",
+      mailboxId: mailbox.id,
+      messageId: message.id,
+      conversationId: message.conversationId,
+      from,
+      subject: message.subject ?? null,
+      receivedDateTime: message.receivedDateTime,
+      bodyChars: message.body.content.length,
+    },
+    "llm-send: appointment extract"
+  );
   const result = await deps.extractAppointment(message.body.content, fields, today, { classify: false });
   await recordLlmUsage(mailbox.orgId, result.usage, deps.recordUsage);
   const merged = mergeFields(existing.fields as Record<string, string | null>, result.fields);

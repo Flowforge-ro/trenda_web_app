@@ -57,6 +57,24 @@ model Mailbox {
   updatedAt             DateTime     @updatedAt
   orders                Order[]
   appointments          Appointment[]
+  seenMessages          SeenMessage[]
+}
+
+// Dedupe ledger for the inbox poll overlap window. The poll re-fetches a 2-min
+// buffer before its watermark (clock-skew/late-mail safety), so the boundary
+// message is re-listed every cycle. Without a record, junk classified "other"
+// (which persists nothing) gets re-sent to the LLM forever. We mark every
+// processed message here so a re-fetch is skipped, not re-metered or re-extracted.
+// Bounded: rows older than (watermark - overlap) can never be re-fetched and are pruned.
+model SeenMessage {
+  mailboxId        String
+  mailbox          Mailbox  @relation(fields: [mailboxId], references: [id], onDelete: Cascade)
+  graphMessageId   String
+  receivedDateTime DateTime
+  createdAt        DateTime @default(now())
+
+  @@id([mailboxId, graphMessageId])
+  @@index([mailboxId, receivedDateTime]) // prune by watermark
 }
 
 model Order {
