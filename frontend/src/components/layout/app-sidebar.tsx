@@ -55,7 +55,7 @@ export function AppSidebar() {
           <>
             <Truck className="h-6 w-6 shrink-0" />
             <span className="flex-1 text-lg font-semibold tracking-tight">
-              Trenda
+              {user?.org?.name ?? "Organizatie"}
             </span>
           </>
         )}
