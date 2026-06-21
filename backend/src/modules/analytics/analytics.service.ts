@@ -88,3 +88,41 @@ export async function getDeliveryBoard(orgId: string, now: Date, deps: Analytics
   }
   return { upcoming, overdue };
 }
+
+export interface VendorRow {
+  vendorEmail: string; orders: number; answered: number;
+  avgResponseHours: number | null; needsReviewRate: number; bounceRate: number; onTimeRate: number | null;
+}
+
+export async function getVendorScorecard(orgId: string, query: AnalyticsQuery, now: Date, deps: AnalyticsDeps = defaultDeps): Promise<VendorRow[]> {
+  const rows = await deps.prisma.order.findMany({
+    where: { orgId, ...createdAtWhere(query) },
+    select: {
+      vendorEmail: true, createdAt: true, replyStatus: true, emailStatus: true, closedAt: true, deliveryLatest: true,
+      replies: { orderBy: { receivedDateTime: "asc" }, take: 1, select: { receivedDateTime: true } },
+    },
+  });
+
+  type Acc = { orders: number; answered: number; responseMsSum: number; needsReview: number; bounced: number; closedWithDeadline: number; onTime: number };
+  const byVendor = new Map<string, Acc>();
+  for (const o of rows) {
+    const a = byVendor.get(o.vendorEmail) ?? { orders: 0, answered: 0, responseMsSum: 0, needsReview: 0, bounced: 0, closedWithDeadline: 0, onTime: 0 };
+    a.orders += 1;
+    if (o.replyStatus === "needs_review") a.needsReview += 1;
+    if (o.emailStatus === "esuat") a.bounced += 1;
+    const firstReply = o.replies[0];
+    if (firstReply) { a.answered += 1; a.responseMsSum += firstReply.receivedDateTime.getTime() - o.createdAt.getTime(); }
+    if (o.closedAt && o.deliveryLatest) { a.closedWithDeadline += 1; if (o.closedAt.getTime() <= o.deliveryLatest.getTime()) a.onTime += 1; }
+    byVendor.set(o.vendorEmail, a);
+  }
+
+  return [...byVendor].map(([vendorEmail, a]) => ({
+    vendorEmail,
+    orders: a.orders,
+    answered: a.answered,
+    avgResponseHours: a.answered > 0 ? a.responseMsSum / a.answered / 3_600_000 : null,
+    needsReviewRate: a.orders > 0 ? a.needsReview / a.orders : 0,
+    bounceRate: a.orders > 0 ? a.bounced / a.orders : 0,
+    onTimeRate: a.closedWithDeadline > 0 ? a.onTime / a.closedWithDeadline : null,
+  })).sort((x, y) => y.orders - x.orders);
+}

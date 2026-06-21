@@ -1,7 +1,7 @@
 // backend/src/modules/analytics/analytics.service.test.ts
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { getTimeSaved, type AnalyticsDeps } from "./analytics.service.js";
+import { getTimeSaved, getDeliveryBoard as _getDeliveryBoard, getVendorScorecard, type AnalyticsDeps } from "./analytics.service.js";
 
 function deps(rows: { kind: string; emails: number; costUsd: number }[]): AnalyticsDeps {
   return {
@@ -44,8 +44,6 @@ test("getTimeSaved returns null roi when there is no cost", async () => {
   assert.equal(r.roi, null);
 });
 
-import { getDeliveryBoard } from "./analytics.service.js";
-
 function boardDeps(orders: any[]): AnalyticsDeps {
   return { prisma: { order: { findMany: async () => orders } } as any };
 }
@@ -61,7 +59,30 @@ test("getDeliveryBoard splits upcoming (<=7d) from overdue (past)", async () => 
     mk("FAR", "2026-07-30T00:00:00Z", "2026-07-31T00:00:00Z"), // far -> neither
     mk("OVER", "2026-06-10T00:00:00Z", "2026-06-12T00:00:00Z"),// past latest -> overdue
   ]);
-  const board = await getDeliveryBoard("ORG1", now, d);
+  const board = await _getDeliveryBoard("ORG1", now, d);
   assert.deepEqual(board.upcoming.map((o) => o.id), ["UP"]);
   assert.deepEqual(board.overdue.map((o) => o.id), ["OVER"]);
+});
+
+function vendorDeps(orders: any[]): AnalyticsDeps {
+  return { prisma: { order: { findMany: async () => orders } } as any };
+}
+
+test("getVendorScorecard aggregates response time, review rate and bounce rate per vendor", async () => {
+  const now = new Date("2026-06-21T00:00:00Z");
+  const orders = [
+    { vendorEmail: "a@x", createdAt: new Date("2026-06-01T00:00:00Z"), replyStatus: "extracted", emailStatus: "trimis",
+      closedAt: new Date("2026-06-05T00:00:00Z"), deliveryLatest: new Date("2026-06-06T00:00:00Z"),
+      replies: [{ receivedDateTime: new Date("2026-06-01T02:00:00Z") }] }, // 2h response
+    { vendorEmail: "a@x", createdAt: new Date("2026-06-02T00:00:00Z"), replyStatus: "needs_review", emailStatus: "esuat",
+      closedAt: null, deliveryLatest: null, replies: [] }, // no reply, bounced
+  ];
+  const [row] = await getVendorScorecard("ORG1", {}, now, vendorDeps(orders));
+  assert.equal(row.vendorEmail, "a@x");
+  assert.equal(row.orders, 2);
+  assert.equal(row.answered, 1);
+  assert.equal(row.avgResponseHours, 2);
+  assert.equal(row.needsReviewRate, 0.5);
+  assert.equal(row.bounceRate, 0.5);
+  assert.equal(row.onTimeRate, 1); // the one closed order closed before deliveryLatest
 });
