@@ -24,7 +24,7 @@ function makeDeps(overrides: Partial<OrderDeps> = {}): OrderDeps {
     decrypt: () => "RT1",
     encrypt: (s: string) => `enc(${s})`,
     getAccessTokenFromRefreshToken: async () => ({ accessToken: "AT" }),
-    createAndSendMail: async () => ({ internetMessageId: "<id@x>" }),
+    createAndSendMail: async () => ({ internetMessageId: "<id@x>", conversationId: null }),
     renderStatusRequest: () => "BODY",
     renderOfferAcceptance: () => "OFFER_BODY",
     recordUsage: (async () => {}) as any,
@@ -141,7 +141,7 @@ test("acceptOffer emails vendor and sets accepted", async () => {
     } as any,
     createAndSendMail: async (_token: string, msg: any) => {
       sentTo.push(msg.to);
-      return { internetMessageId: "<offer@x>" };
+      return { internetMessageId: "<offer@x>", conversationId: null };
     },
     recordUsage: (async (args: any) => { recordedKinds.push(args.kind); }) as any,
   });

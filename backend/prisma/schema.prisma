@@ -80,6 +80,7 @@ model Order {
   statusRequestSentAt DateTime?
   closedAt            DateTime? // terminal: closed orders leave the poll/extract/nudge pipeline
   internetMessageId   String?
+  conversationId      String?      // Exchange threads NDR bounces by conversation, not reply headers
   emailStatus         String       @default("trimis")
   replyStatus         String       @default("awaiting_reply")
   orderNumberConfidence String?    // "high" | "low" — deterministic extraction confidence
@@ -96,6 +97,7 @@ model Order {
 
   @@index([orgId, createdAt, id]) // listOrders cursor pagination
   @@index([replyStatus]) // poll extract phase
+  @@index([conversationId]) // poll matches Undeliverable bounces by conversation
   @@index([flaggedAt]) // superadmin flagged-orders list
 }
 

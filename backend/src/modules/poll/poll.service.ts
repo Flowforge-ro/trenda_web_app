@@ -5,7 +5,7 @@ import { extractOrderInfo } from "../../lib/extraction.js";
 import { recordUsage } from "../../lib/usage.js";
 import { getMailboxAccessToken } from "../../lib/mailbox-token.js";
 import { fetchMailboxMessages } from "../../lib/mail-poll.js";
-import { matchReply, normalizeMessageId } from "./matching.js";
+import { matchReply, normalizeMessageId, isUndeliverable } from "./matching.js";
 import { logError } from "../../lib/db-log.js";
 import { extractPending } from "./extraction-worker.js";
 import { requestStatusUpdates } from "./status-request.js";
@@ -31,7 +31,7 @@ const defaultDeps: PollDeps = {
 // per-poll matching set stays bounded even when nobody closes their orders.
 const MATCH_WINDOW_MS = 60 * 24 * 60 * 60 * 1000;
 
-type MatchableOrder = Pick<Order, "id" | "mailboxId" | "internetMessageId" | "createdAt">;
+type MatchableOrder = Pick<Order, "id" | "mailboxId" | "internetMessageId" | "conversationId" | "createdAt">;
 
 export async function pollReplies(deps: PollDeps = defaultDeps): Promise<void> {
   // One token refresh per mailbox per cycle: Microsoft rotates the refresh token
@@ -61,7 +61,7 @@ async function ingestReplies(deps: PollDeps, getToken: GetToken): Promise<void> 
       createdAt: { gte: new Date(deps.now().getTime() - MATCH_WINDOW_MS) },
       org: { suspendedAt: null },
     },
-    select: { id: true, mailboxId: true, internetMessageId: true, createdAt: true },
+    select: { id: true, mailboxId: true, internetMessageId: true, conversationId: true, createdAt: true },
   }));
   if (matchable.length === 0) return;
 
@@ -95,11 +95,27 @@ async function pollMailbox(mailboxId: string, orders: MatchableOrder[], deps: Po
   const { messages, newest } = await fetchMailboxMessages(deps, accessToken, base, mailbox?.orgId ?? null);
 
   const byMessageId = new Map<string, MatchableOrder>();
+  const byConversationId = new Map<string, MatchableOrder>();
   for (const order of orders) {
     if (order.internetMessageId) byMessageId.set(normalizeMessageId(order.internetMessageId), order);
+    if (order.conversationId) byConversationId.set(order.conversationId, order);
   }
 
   for (const message of messages) {
+    // A bounce (NDR) means the order email never reached the vendor: mark it
+    // failed so the UI shows the resend button, and never store it as a reply.
+    // Exchange threads NDRs by conversation rather than reply headers, so fall
+    // back to conversationId when In-Reply-To/References don't resolve.
+    if (isUndeliverable(message.subject)) {
+      const bounced =
+        matchReply(message, byMessageId) ??
+        (message.conversationId ? byConversationId.get(message.conversationId) : undefined);
+      if (bounced) {
+        await deps.prisma.order.update({ where: { id: bounced.id }, data: { emailStatus: "esuat" } });
+      }
+      continue;
+    }
+
     const order = matchReply(message, byMessageId);
     if (!order) continue;
 

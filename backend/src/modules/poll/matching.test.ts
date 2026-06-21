@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { normalizeMessageId, parseReferencedIds, matchReply } from "./matching.js";
+import { normalizeMessageId, parseReferencedIds, matchReply, isUndeliverable } from "./matching.js";
 import type { GraphMessage } from "../../lib/microsoft.js";
 
 function msg(headers?: { name: string; value: string }[]): GraphMessage {
@@ -45,4 +45,12 @@ test("matchReply returns null when nothing matches", () => {
 test("matchReply returns null when the reply has no threading headers", () => {
   const orders = new Map([["orig@us", { id: "O1", internetMessageId: "<orig@us>" }]]);
   assert.equal(matchReply(msg(), orders), null);
+});
+
+test("isUndeliverable detects the bounce subject prefix, case/space tolerant", () => {
+  assert.equal(isUndeliverable("Undeliverable: Cerere comandă"), true);
+  assert.equal(isUndeliverable("  undeliverable: foo"), true);
+  assert.equal(isUndeliverable("Re: Undeliverable: foo"), false);
+  assert.equal(isUndeliverable("Cerere comandă"), false);
+  assert.equal(isUndeliverable(null), false);
 });

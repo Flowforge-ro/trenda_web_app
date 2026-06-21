@@ -66,12 +66,13 @@ export interface MailInput {
 const draftSchema = z.object({
   id: z.string(),
   internetMessageId: z.string(),
+  conversationId: z.string().nullable().optional(),
 });
 
 export async function createAndSendMail(
   accessToken: string,
   mail: MailInput
-): Promise<{ internetMessageId: string }> {
+): Promise<{ internetMessageId: string; conversationId: string | null }> {
   const auth = {
     Authorization: `Bearer ${accessToken}`,
     "Content-Type": "application/json",
@@ -105,7 +106,7 @@ export async function createAndSendMail(
     throw new Error(`Graph send failed: ${detail}`);
   }
 
-  return { internetMessageId: draft.internetMessageId };
+  return { internetMessageId: draft.internetMessageId, conversationId: draft.conversationId ?? null };
 }
 
 const graphHeaderSchema = z.object({ name: z.string(), value: z.string() });

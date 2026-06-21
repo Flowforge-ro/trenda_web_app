@@ -38,7 +38,7 @@ test("createAndSendMail drafts then sends and returns internetMessageId", async 
     calls.push(url);
     if (url.endsWith("/me/messages")) {
       return new Response(
-        JSON.stringify({ id: "MSG1", internetMessageId: "<abc@contoso>" }),
+        JSON.stringify({ id: "MSG1", internetMessageId: "<abc@contoso>", conversationId: "CONV1" }),
         { status: 201 }
       );
     }
@@ -52,6 +52,7 @@ test("createAndSendMail drafts then sends and returns internetMessageId", async 
   });
 
   assert.equal(result.internetMessageId, "<abc@contoso>");
+  assert.equal(result.conversationId, "CONV1");
   assert.ok(calls[0].endsWith("/me/messages"));
   assert.ok(calls[1].endsWith("/me/messages/MSG1/send"));
 });

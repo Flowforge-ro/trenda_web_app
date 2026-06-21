@@ -86,7 +86,7 @@ async function sendOrderEmail(
     const accessToken = await getMailboxAccessToken(deps, order.mailboxId);
     if (!accessToken) throw new Error("Mailbox has no usable token");
 
-    const { internetMessageId } = await deps.createAndSendMail(accessToken, {
+    const { internetMessageId, conversationId } = await deps.createAndSendMail(accessToken, {
       to: order.vendorEmail,
       subject: `Cerere comandă piesă — ${order.chassisSeries}`,
       body: deps.renderStatusRequest({ partCode: order.partCode, chassisSeries: order.chassisSeries }),
@@ -95,7 +95,7 @@ async function sendOrderEmail(
 
     const updated = await deps.prisma.order.update({
       where: { id: order.id },
-      data: { internetMessageId, emailStatus: "trimis" },
+      data: { internetMessageId, conversationId, emailStatus: "trimis" },
     });
     return { order: updated, emailSent: true };
   } catch (err) {

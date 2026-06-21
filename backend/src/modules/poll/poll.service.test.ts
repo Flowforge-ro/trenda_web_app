@@ -71,7 +71,7 @@ function makeDeps(state: State, messages: GraphMessage[], overrides: Partial<Pol
     encrypt: (s: string) => `enc(${s})`,
     getAccessTokenFromRefreshToken: async () => ({ accessToken: "AT" }),
     listMessagesSince: async () => messages,
-    createAndSendMail: async () => ({ internetMessageId: "<sent@x>" }),
+    createAndSendMail: async () => ({ internetMessageId: "<sent@x>", conversationId: null }),
     listFileAttachments: async () => [],
     extractOrderInfo: async () => ({ orderNumber: null, deliveryTime: null, deliveryEarliest: null, deliveryLatest: null, orderNumberGrounded: true, deliveryGrounded: true, status: "needs_review" as const, isOffer: false, price: null }),
     recordUsage: (async (e: any) => { (state.usage ??= []).push(e); }) as any,
@@ -87,6 +87,28 @@ test("pollReplies records a matching reply and flips replyStatus", async () => {
   assert.equal(state.replies[0].orderId, "O1");
   assert.deepEqual(state.replyUpdates, [{ id: "O1", replyStatus: "reply_received" }]);
   assert.ok(state.mailboxUpdates.some((u) => u.lastPolledAt instanceof Date));
+});
+
+test("pollReplies marks an order failed on an Undeliverable bounce without storing a reply", async () => {
+  const state: State = { orders: [ORDER], replies: [], replyUpdates: [], mailboxUpdates: [] };
+  const bounce = matchingMessage();
+  bounce.subject = "Undeliverable: Cerere comandă piesă";
+  await pollReplies(makeDeps(state, [bounce]));
+  assert.equal(state.replies.length, 0, "a bounce must not be stored as a reply");
+  assert.deepEqual(state.replyUpdates, [{ id: "O1", emailStatus: "esuat" }]);
+});
+
+test("pollReplies marks an order failed on an Undeliverable bounce matched only by conversationId", async () => {
+  // Exchange NDRs often carry no In-Reply-To, only the original conversationId.
+  const order = { ...ORDER, conversationId: "CONV1" };
+  const state: State = { orders: [order], replies: [], replyUpdates: [], mailboxUpdates: [] };
+  const bounce = matchingMessage();
+  bounce.subject = "Undeliverable: Cerere comandă piesă";
+  bounce.internetMessageHeaders = []; // no reply headers
+  (bounce as any).conversationId = "CONV1";
+  await pollReplies(makeDeps(state, [bounce]));
+  assert.equal(state.replies.length, 0);
+  assert.deepEqual(state.replyUpdates, [{ id: "O1", emailStatus: "esuat" }]);
 });
 
 test("pollReplies skips orders whose org is suspended", async () => {
@@ -213,7 +235,7 @@ const DUE_ORDER = { id: "O3", orgId: "ORG1", mailboxId: "M1", vendorEmail: "f@ex
 test("status phase emails the supplier from the order's mailbox when delivery is due", async () => {
   let sent: any;
   const state: State = { orders: [DUE_ORDER], replies: [], replyUpdates: [], mailboxUpdates: [] };
-  await pollReplies(makeDeps(state, [], { createAndSendMail: async (_t: string, mail: any) => { sent = mail; return { internetMessageId: "<s@x>" }; } }));
+  await pollReplies(makeDeps(state, [], { createAndSendMail: async (_t: string, mail: any) => { sent = mail; return { internetMessageId: "<s@x>", conversationId: null }; } }));
   assert.ok(sent);
   assert.equal(sent.subject, "Status comandă — WVW1");
   assert.ok(state.replyUpdates.find((u) => u.id === "O3")?.statusRequestSentAt instanceof Date);
@@ -222,7 +244,7 @@ test("status phase emails the supplier from the order's mailbox when delivery is
 test("status phase does not email when delivery is far away", async () => {
   let called = false;
   const state: State = { orders: [{ ...DUE_ORDER, deliveryEarliest: new Date("2026-06-15T00:00:00.000Z") }], replies: [], replyUpdates: [], mailboxUpdates: [] };
-  await pollReplies(makeDeps(state, [], { createAndSendMail: async () => { called = true; return { internetMessageId: "<x>" }; } }));
+  await pollReplies(makeDeps(state, [], { createAndSendMail: async () => { called = true; return { internetMessageId: "<x>", conversationId: null }; } }));
   assert.equal(called, false);
 });
 
@@ -364,7 +386,7 @@ test("extract phase skips closed orders", async () => {
 test("status phase skips closed orders", async () => {
   let called = false;
   const state: State = { orders: [{ ...DUE_ORDER, closedAt: new Date("2026-06-01T09:00:00Z") }], replies: [], replyUpdates: [], mailboxUpdates: [] };
-  await pollReplies(makeDeps(state, [], { createAndSendMail: async () => { called = true; return { internetMessageId: "<x>" }; } }));
+  await pollReplies(makeDeps(state, [], { createAndSendMail: async () => { called = true; return { internetMessageId: "<x>", conversationId: null }; } }));
   assert.equal(called, false);
 });
 
@@ -405,7 +427,7 @@ test("offer_pending orders are not nudged even when delivery is near", async () 
     statusRequestSentAt: null,
   };
   const state: State = { orders: [offerPendingOrder], replies: [], replyUpdates: [], mailboxUpdates: [] };
-  await pollReplies(makeDeps(state, [], { createAndSendMail: async () => { called = true; return { internetMessageId: "<x>" }; } }));
+  await pollReplies(makeDeps(state, [], { createAndSendMail: async () => { called = true; return { internetMessageId: "<x>", conversationId: null }; } }));
   assert.equal(called, false, "offer_pending order must not receive a status nudge email");
 });
 

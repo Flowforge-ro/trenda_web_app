@@ -20,6 +20,13 @@ export function parseReferencedIds(
   return ids;
 }
 
+// Microsoft Exchange/Outlook bounce (NDR) notifications arrive with the
+// subject prefixed "Undeliverable:" and reference the original message-id in
+// their threading headers, so they match the order like a real reply would.
+export function isUndeliverable(subject: string | null | undefined): boolean {
+  return (subject ?? "").trimStart().toLowerCase().startsWith("undeliverable:");
+}
+
 export function matchReply<T extends { internetMessageId: string | null }>(
   message: GraphMessage,
   ordersByMessageId: Map<string, T>
