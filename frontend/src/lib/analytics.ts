@@ -35,3 +35,16 @@ async function fetchDeliveries(): Promise<DeliveryBoard> {
 export function useDeliveryBoard() {
   return useQuery({ queryKey: ["analytics", "deliveries"], queryFn: fetchDeliveries });
 }
+
+export interface VendorRow {
+  vendorEmail: string; orders: number; answered: number;
+  avgResponseHours: number | null; needsReviewRate: number; bounceRate: number; onTimeRate: number | null;
+}
+async function fetchVendors(): Promise<VendorRow[]> {
+  const res = await apiFetch("/analytics/vendors");
+  if (!res.ok) throw new Error("Nu s-au putut încărca furnizorii");
+  return res.json();
+}
+export function useVendorScorecard() {
+  return useQuery({ queryKey: ["analytics", "vendors"], queryFn: fetchVendors });
+}

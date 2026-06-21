@@ -1,4 +1,4 @@
-import { useTimeSaved, useDeliveryBoard } from "../lib/analytics";
+import { useTimeSaved, useDeliveryBoard, useVendorScorecard } from "../lib/analytics";
 
 function Card({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
@@ -14,6 +14,8 @@ export function AnalyticsPage() {
   const { data } = useTimeSaved();
   const ts = data;
   const { data: board } = useDeliveryBoard();
+  const { data: vendors } = useVendorScorecard();
+  const pct = (n: number) => `${(n * 100).toFixed(0)}%`;
   const fmtDate = (s: string | null) => (s ? new Date(s).toLocaleDateString("ro-RO") : "—");
   return (
     <div className="p-8">
@@ -47,6 +49,26 @@ export function AnalyticsPage() {
                 <td>{o.orderNumber ?? "—"}</td>
                 <td>{fmtDate(o.deliveryEarliest)}</td>
                 <td>{board?.overdue.some((x) => x.id === o.id) ? <span className="text-error">întârziat</span> : "în termen"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+      <section className="mt-8">
+        <h2 className="mb-3 text-lg font-semibold text-foreground">Furnizori</h2>
+        <table className="w-full text-sm">
+          <thead><tr className="text-left text-muted-foreground">
+            <th className="py-2">Furnizor</th><th>Comenzi</th><th>Răspuns mediu</th><th>La timp</th><th>De verificat</th><th>Eșuate</th>
+          </tr></thead>
+          <tbody>
+            {(vendors ?? []).map((v) => (
+              <tr key={v.vendorEmail} className="border-t border-border">
+                <td className="py-2">{v.vendorEmail}</td>
+                <td>{v.orders}</td>
+                <td>{v.avgResponseHours != null ? `${v.avgResponseHours.toFixed(1)}h` : "—"}</td>
+                <td>{v.onTimeRate != null ? pct(v.onTimeRate) : "—"}</td>
+                <td>{pct(v.needsReviewRate)}</td>
+                <td>{pct(v.bounceRate)}</td>
               </tr>
             ))}
           </tbody>
