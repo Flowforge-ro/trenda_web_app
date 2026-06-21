@@ -23,7 +23,8 @@ export default defineConfig({
       "/users": "http://localhost:3000",
       "/logs": "http://localhost:3000",
       "/appointments": "http://localhost:3000",
-      "/usage": "http://localhost:3000"
+      "/usage": "http://localhost:3000",
+      "/analytics": "http://localhost:3000"
     },
   },
   test: {

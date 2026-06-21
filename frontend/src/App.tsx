@@ -8,6 +8,7 @@ import { AppointmentsPage } from "./pages/appointments";
 import { SettingsPage } from "./pages/settings";
 import { SuperadminPanel } from "./pages/admin";
 import { AppLayout } from "./components/layout/app-layout";
+import { AnalyticsPage } from "./pages/analytics";
 
 const queryClient = new QueryClient();
 
@@ -40,6 +41,7 @@ function App() {
             <Route path="/" element={<OrdersPage />} />
             <Route path="/programari" element={<AppointmentsPage />} />
             <Route path="/setari" element={<SettingsPage />} />
+            <Route path="/analize" element={<AnalyticsPage />} />
           </Route>
         </Routes>
       </BrowserRouter>

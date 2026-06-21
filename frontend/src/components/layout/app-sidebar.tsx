@@ -5,6 +5,7 @@ import {
   ClipboardList,
   CalendarDays,
   Settings,
+  BarChart3,
   LogOut,
   PanelLeftClose,
   PanelLeftOpen,
@@ -18,6 +19,7 @@ const navItems = [
   { to: "/", label: "Comenzi", icon: ClipboardList, end: true },
   { to: "/programari", label: "Programări", icon: CalendarDays, end: false },
   { to: "/setari", label: "Setări", icon: Settings, end: false },
+  { to: "/analize", label: "Analize", icon: BarChart3, end: false },
 ];
 
 async function logout() {
