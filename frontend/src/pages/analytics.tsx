@@ -1,4 +1,4 @@
-import { useTimeSaved } from "../lib/analytics";
+import { useTimeSaved, useDeliveryBoard } from "../lib/analytics";
 
 function Card({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
@@ -13,6 +13,8 @@ function Card({ label, value, sub }: { label: string; value: string; sub?: strin
 export function AnalyticsPage() {
   const { data } = useTimeSaved();
   const ts = data;
+  const { data: board } = useDeliveryBoard();
+  const fmtDate = (s: string | null) => (s ? new Date(s).toLocaleDateString("ro-RO") : "—");
   return (
     <div className="p-8">
       <header className="mb-6">
@@ -27,6 +29,28 @@ export function AnalyticsPage() {
           <Card label="Cost AI (USD)" value={ts ? ts.costUsd.toFixed(2) : "—"} />
           <Card label="ROI" value={ts && ts.roi != null ? `${ts.roi.toFixed(1)}×` : "—"} />
         </div>
+      </section>
+      <section className="mt-8">
+        <h2 className="mb-3 text-lg font-semibold text-foreground">Livrări</h2>
+        {board?.overdue.length ? (
+          <p className="mb-2 text-sm text-error">{board.overdue.length} comenzi întârziate</p>
+        ) : null}
+        <table className="w-full text-sm">
+          <thead><tr className="text-left text-muted-foreground">
+            <th className="py-2">Piesa</th><th>Furnizor</th><th>Comanda</th><th>Livrare</th><th>Stare</th>
+          </tr></thead>
+          <tbody>
+            {[...(board?.overdue ?? []), ...(board?.upcoming ?? [])].map((o) => (
+              <tr key={o.id} className="border-t border-border">
+                <td className="py-2">{o.partCode}</td>
+                <td>{o.vendorEmail}</td>
+                <td>{o.orderNumber ?? "—"}</td>
+                <td>{fmtDate(o.deliveryEarliest)}</td>
+                <td>{board?.overdue.some((x) => x.id === o.id) ? <span className="text-error">întârziat</span> : "în termen"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </section>
     </div>
   );
