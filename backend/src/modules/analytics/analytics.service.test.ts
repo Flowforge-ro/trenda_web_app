@@ -43,3 +43,25 @@ test("getTimeSaved returns null roi when there is no cost", async () => {
   const r = await getTimeSaved("ORG1", {}, deps([{ kind: "email_write", emails: 1, costUsd: 0 }]));
   assert.equal(r.roi, null);
 });
+
+import { getDeliveryBoard } from "./analytics.service.js";
+
+function boardDeps(orders: any[]): AnalyticsDeps {
+  return { prisma: { order: { findMany: async () => orders } } as any };
+}
+
+test("getDeliveryBoard splits upcoming (<=7d) from overdue (past)", async () => {
+  const now = new Date("2026-06-21T00:00:00Z");
+  const mk = (id: string, e: string | null, l: string | null) => ({
+    id, vendorEmail: "v@x", partCode: "P", chassisSeries: "C", orderNumber: null,
+    deliveryEarliest: e ? new Date(e) : null, deliveryLatest: l ? new Date(l) : null, status: "x",
+  });
+  const d = boardDeps([
+    mk("UP", "2026-06-24T00:00:00Z", "2026-06-25T00:00:00Z"),  // in 3 days -> upcoming
+    mk("FAR", "2026-07-30T00:00:00Z", "2026-07-31T00:00:00Z"), // far -> neither
+    mk("OVER", "2026-06-10T00:00:00Z", "2026-06-12T00:00:00Z"),// past latest -> overdue
+  ]);
+  const board = await getDeliveryBoard("ORG1", now, d);
+  assert.deepEqual(board.upcoming.map((o) => o.id), ["UP"]);
+  assert.deepEqual(board.overdue.map((o) => o.id), ["OVER"]);
+});
