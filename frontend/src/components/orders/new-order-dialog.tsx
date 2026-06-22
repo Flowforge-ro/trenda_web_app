@@ -8,16 +8,19 @@ import {
 } from "@/components/ui/dialog";
 import { useCreateOrder } from "@/lib/orders";
 import { useMailboxes, type Mailbox } from "@/lib/mailboxes";
+import { VendorSelect } from "@/components/orders/vendor-select";
+import type { Vendor } from "@/lib/vendors";
 
 interface NewOrderForm {
-  vendorEmail: string;
+  vendorId: string;
+  vendorLabel: string; // "Name (email)" for display in the picker
   chassisSeries: string;
   partCode: string;
   mailboxId: string;
   registrationNumber: string;
 }
 
-const emptyForm: NewOrderForm = { vendorEmail: "", chassisSeries: "", partCode: "", mailboxId: "", registrationNumber: "" };
+const emptyForm: NewOrderForm = { vendorId: "", vendorLabel: "", chassisSeries: "", partCode: "", mailboxId: "", registrationNumber: "" };
 
 export function NewOrderDialog() {
   const [open, setOpen] = useState(false);
@@ -51,14 +54,22 @@ function NewOrderForm({ vendorMailboxes, onClose }: { vendorMailboxes: Mailbox[]
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
+  function selectVendor(v: Vendor) {
+    setForm((prev) => ({ ...prev, vendorId: v.id, vendorLabel: `${v.name} (${v.email})` }));
+  }
+
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    createOrder.mutate(form, {
-      onSuccess: ({ emailSent }) => {
-        if (!emailSent) alert("Comanda a fost salvată, dar emailul nu a putut fi trimis.");
-        onClose();
-      },
-    });
+    const { vendorId, chassisSeries, partCode, mailboxId, registrationNumber } = form;
+    createOrder.mutate(
+      { vendorId, chassisSeries, partCode, mailboxId, registrationNumber },
+      {
+        onSuccess: ({ emailSent }) => {
+          if (!emailSent) alert("Comanda a fost salvată, dar emailul nu a putut fi trimis.");
+          onClose();
+        },
+      }
+    );
   }
 
   return (
@@ -91,8 +102,8 @@ function NewOrderForm({ vendorMailboxes, onClose }: { vendorMailboxes: Mailbox[]
               )}
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="vendorEmail">Email furnizor</Label>
-              <Input id="vendorEmail" type="email" required placeholder="furnizor@exemplu.ro" value={form.vendorEmail} onChange={(e) => update("vendorEmail", e.target.value)} />
+              <Label>Furnizor</Label>
+              <VendorSelect value={form.vendorId} selectedLabel={form.vendorLabel} onSelect={selectVendor} />
             </div>
             <div className="grid gap-2">
               <Label htmlFor="chassisSeries">Serie sasiu</Label>
@@ -111,7 +122,7 @@ function NewOrderForm({ vendorMailboxes, onClose }: { vendorMailboxes: Mailbox[]
           {createOrder.isError && <p className="text-sm text-error">Crearea comenzii a eșuat. Încearcă din nou.</p>}
           <DialogFooter>
             <DialogClose render={<Button type="button" variant="outline" />}>Anulează</DialogClose>
-            <Button type="submit" disabled={createOrder.isPending || !form.mailboxId}>
+            <Button type="submit" disabled={createOrder.isPending || !form.mailboxId || !form.vendorId}>
               {createOrder.isPending ? "Se trimite..." : "Trimite"}
             </Button>
           </DialogFooter>

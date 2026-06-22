@@ -23,6 +23,22 @@ model Organization {
   appointmentFieldConfigs AppointmentFieldConfig[]
   appointments            Appointment[]
   usageEvents             UsageEvent[]
+  vendors                 Vendor[]
+}
+
+model Vendor {
+  id        String       @id @default(cuid())
+  orgId     String
+  org       Organization @relation(fields: [orgId], references: [id])
+  name      String
+  email     String
+  phone     String?
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  orders    Order[]
+
+  @@unique([orgId, email]) // one vendor per email within an org
+  @@index([orgId, createdAt, id])
 }
 
 model User {
@@ -67,6 +83,8 @@ model Order {
   mailbox             Mailbox      @relation(fields: [mailboxId], references: [id])
   createdByUserId     String
   createdBy           User         @relation("CreatedBy", fields: [createdByUserId], references: [id])
+  vendorId            String? // links to Vendor entity; vendorEmail kept denormalized for sending mail
+  vendor              Vendor?      @relation(fields: [vendorId], references: [id])
   vendorEmail         String
   chassisSeries       String
   partCode            String
@@ -99,6 +117,7 @@ model Order {
   @@index([replyStatus]) // poll extract phase
   @@index([conversationId]) // poll matches Undeliverable bounces by conversation
   @@index([flaggedAt]) // superadmin flagged-orders list
+  @@index([vendorId])
 }
 
 model OrderReply {

@@ -4,7 +4,7 @@ import { orderInputSchema } from "./orders.service.js";
 
 test("orderInputSchema accepts a valid payload", () => {
   const r = orderInputSchema.safeParse({
-    vendorEmail: "f@ex.ro",
+    vendorId: "V1",
     chassisSeries: "WVW001",
     partCode: "Filtru",
     mailboxId: "M1",
@@ -13,37 +13,39 @@ test("orderInputSchema accepts a valid payload", () => {
   assert.equal(r.success, true);
 });
 
-test("orderInputSchema rejects a malformed email", () => {
+test("orderInputSchema rejects a missing vendorId", () => {
   const r = orderInputSchema.safeParse({
-    vendorEmail: "not-an-email",
     chassisSeries: "WVW001",
     partCode: "Filtru",
     mailboxId: "M1",
+    registrationNumber: "B-123-XYZ",
   });
   assert.equal(r.success, false);
 });
 
 test("orderInputSchema rejects an empty partCode", () => {
   const r = orderInputSchema.safeParse({
-    vendorEmail: "f@ex.ro",
+    vendorId: "V1",
     chassisSeries: "WVW001",
     partCode: "",
     mailboxId: "M1",
+    registrationNumber: "B-123-XYZ",
   });
   assert.equal(r.success, false);
 });
 
 test("orderInputSchema rejects an empty chassisSeries", () => {
   const r = orderInputSchema.safeParse({
-    vendorEmail: "f@ex.ro",
+    vendorId: "V1",
     chassisSeries: "",
     partCode: "Filtru",
     mailboxId: "M1",
+    registrationNumber: "B-123-XYZ",
   });
   assert.equal(r.success, false);
 });
 
 test("orderInputSchema rejects a missing mailboxId", () => {
-  const r = orderInputSchema.safeParse({ vendorEmail: "f@ex.ro", chassisSeries: "WVW001", partCode: "Filtru" });
+  const r = orderInputSchema.safeParse({ vendorId: "V1", chassisSeries: "WVW001", partCode: "Filtru" });
   assert.equal(r.success, false);
 });

@@ -3,12 +3,12 @@ import { apiFetch } from "./http";
 
 export interface TimeSaved {
   emailsSent: number;
+  emailsRead: number;
   repliesParsed: number;
   minutesSaved: number;
   hoursSaved: number;
   valueSavedRon: number;
-  costUsd: number;
-  roi: number | null;
+  // costUsd / roi are returned by the API but intentionally not surfaced to customers.
 }
 
 async function fetchTimeSaved(): Promise<TimeSaved> {
@@ -19,6 +19,22 @@ async function fetchTimeSaved(): Promise<TimeSaved> {
 
 export function useTimeSaved() {
   return useQuery({ queryKey: ["analytics", "time-saved"], queryFn: fetchTimeSaved });
+}
+
+export interface Overview {
+  openOrders: number;
+  overdue: number;
+  dueSoon: number;
+}
+
+async function fetchOverview(): Promise<Overview> {
+  const res = await apiFetch("/analytics/overview");
+  if (!res.ok) throw new Error("Nu s-au putut încărca indicatorii");
+  return res.json();
+}
+
+export function useOverview() {
+  return useQuery({ queryKey: ["analytics", "overview"], queryFn: fetchOverview });
 }
 
 export interface DeliveryItem {
@@ -37,7 +53,7 @@ export function useDeliveryBoard() {
 }
 
 export interface VendorRow {
-  vendorEmail: string; orders: number; answered: number;
+  vendorEmail: string; name: string | null; orders: number; answered: number; orderShare: number;
   avgResponseHours: number | null; needsReviewRate: number; bounceRate: number; onTimeRate: number | null;
 }
 async function fetchVendors(): Promise<VendorRow[]> {

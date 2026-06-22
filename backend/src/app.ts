@@ -12,6 +12,7 @@ import { writeLog } from "./lib/db-log.js";
 import { healthRoutes } from "./system/health/health.js";
 import { authRoutes } from "./system/auth/auth.routes.js";
 import { ordersRoutes } from "./modules/orders/orders.routes.js";
+import { vendorsRoutes } from "./modules/vendors/vendors.routes.js";
 import { organizationsRoutes } from "./modules/organizations/organizations.routes.js";
 import { usersRoutes } from "./modules/users/users.routes.js";
 import { mailboxesRoutes } from "./modules/mailboxes/mailboxes.routes.js";
@@ -98,6 +99,7 @@ await app.register(fastifyOauth2, {
 await app.register(healthRoutes);
 await app.register(authRoutes);
 await app.register(ordersRoutes);
+await app.register(vendorsRoutes);
 await app.register(organizationsRoutes);
 await app.register(usersRoutes);
 await app.register(mailboxesRoutes);

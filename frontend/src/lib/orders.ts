@@ -24,7 +24,7 @@ export interface Order {
 }
 
 export interface NewOrderPayload {
-  vendorEmail: string;
+  vendorId: string;
   chassisSeries: string;
   partCode: string;
   mailboxId: string;

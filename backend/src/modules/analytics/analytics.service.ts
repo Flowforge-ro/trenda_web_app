@@ -22,6 +22,7 @@ function createdAtWhere(query: AnalyticsQuery): { createdAt?: { gte?: Date; lte?
 
 export interface TimeSaved {
   emailsSent: number;
+  emailsRead: number;
   repliesParsed: number;
   minutesSaved: number;
   hoursSaved: number;
@@ -38,10 +39,11 @@ export async function getTimeSaved(orgId: string, query: AnalyticsQuery, deps: A
     _count: { _all: true },
   });
 
-  let emailsSent = 0, repliesParsed = 0, costUsd = 0;
+  let emailsSent = 0, emailsRead = 0, repliesParsed = 0, costUsd = 0;
   for (const g of grouped) {
     costUsd += g._sum.costUsd ?? 0;
     if (g.kind === "email_write") emailsSent += g._sum.emails ?? 0;
+    else if (g.kind === "email_read") emailsRead += g._sum.emails ?? 0;
     else if (g.kind === "llm") repliesParsed += g._count._all;
   }
 
@@ -50,7 +52,29 @@ export async function getTimeSaved(orgId: string, query: AnalyticsQuery, deps: A
   const valueSavedRon = hoursSaved * C.hourlyRateRon;
   const costRon = costUsd * C.usdToRon;
   const roi = costRon > 0 ? valueSavedRon / costRon : null;
-  return { emailsSent, repliesParsed, minutesSaved, hoursSaved, valueSavedRon, costUsd, roi };
+  return { emailsSent, emailsRead, repliesParsed, minutesSaved, hoursSaved, valueSavedRon, costUsd, roi };
+}
+
+export interface Overview {
+  openOrders: number; // not yet closed
+  overdue: number; // open orders past their delivery deadline
+  dueSoon: number; // open orders due within the next 7 days
+}
+
+export async function getOverview(orgId: string, now: Date, deps: AnalyticsDeps = defaultDeps): Promise<Overview> {
+  const rows = await deps.prisma.order.findMany({
+    where: { orgId, closedAt: null },
+    select: { deliveryEarliest: true, deliveryLatest: true },
+  });
+  let overdue = 0, dueSoon = 0;
+  for (const o of rows) {
+    const earliest = o.deliveryEarliest as Date | null;
+    if (!earliest) continue;
+    const deadline: Date = (o.deliveryLatest as Date | null) ?? earliest;
+    if (deadline.getTime() < now.getTime()) overdue += 1;
+    else if (earliest.getTime() <= now.getTime() + DELIVERY_HORIZON_MS) dueSoon += 1;
+  }
+  return { openOrders: rows.length, overdue, dueSoon };
 }
 
 export interface DeliveryItem {
@@ -91,7 +115,7 @@ export async function getDeliveryBoard(orgId: string, now: Date, deps: Analytics
 }
 
 export interface VendorRow {
-  vendorEmail: string; orders: number; answered: number;
+  vendorEmail: string; name: string | null; orders: number; answered: number; orderShare: number;
   avgResponseHours: number | null; needsReviewRate: number; bounceRate: number; onTimeRate: number | null;
 }
 
@@ -103,6 +127,12 @@ export async function getVendorScorecard(orgId: string, query: AnalyticsQuery, n
       replies: { orderBy: { receivedDateTime: "asc" }, take: 1, select: { receivedDateTime: true } },
     },
   });
+
+  // Map vendor email -> display name from the Vendor entities (when available).
+  const vendorEntities = deps.prisma.vendor
+    ? await deps.prisma.vendor.findMany({ where: { orgId }, select: { email: true, name: true } })
+    : [];
+  const nameByEmail = new Map<string, string>(vendorEntities.map((v) => [v.email, v.name]));
 
   type Acc = { orders: number; answered: number; responseMsSum: number; needsReview: number; bounced: number; closedWithDeadline: number; onTime: number };
   const byVendor = new Map<string, Acc>();
@@ -117,10 +147,13 @@ export async function getVendorScorecard(orgId: string, query: AnalyticsQuery, n
     byVendor.set(o.vendorEmail, a);
   }
 
+  const total = rows.length;
   return [...byVendor].map(([vendorEmail, a]) => ({
     vendorEmail,
+    name: nameByEmail.get(vendorEmail) ?? null,
     orders: a.orders,
     answered: a.answered,
+    orderShare: total > 0 ? a.orders / total : 0, // dependency: share of orders going to this vendor
     avgResponseHours: a.answered > 0 ? a.responseMsSum / a.answered / 3_600_000 : null,
     needsReviewRate: a.orders > 0 ? a.needsReview / a.orders : 0,
     bounceRate: a.orders > 0 ? a.bounced / a.orders : 0,

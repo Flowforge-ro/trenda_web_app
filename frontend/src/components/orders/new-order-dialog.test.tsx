@@ -20,6 +20,12 @@ vi.mock("@/lib/mailboxes", () => ({
   useMailboxes: vi.fn(),
 }));
 
+const VENDOR = { id: "v1", name: "Acme SRL", email: "furnizor@test.ro", phone: null, createdAt: "" };
+vi.mock("@/lib/vendors", () => ({
+  useVendors: () => ({ data: [VENDOR], isLoading: false }),
+  useCreateVendor: () => ({ mutate: vi.fn(), isPending: false, isError: false }),
+}));
+
 vi.mock("@/lib/logger", () => ({
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
   logAction: vi.fn(),
@@ -51,6 +57,11 @@ async function openDialog(user: ReturnType<typeof userEvent.setup>) {
   await screen.findByRole("dialog");
 }
 
+async function pickVendor(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole("button", { name: /Alege un furnizor/i }));
+  await user.click(await screen.findByRole("button", { name: /Acme SRL/i }));
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   mockCreateOrder.mockReturnValue({ mutate: mockMutate, isPending: false, isError: false });
@@ -67,7 +78,7 @@ describe("NewOrderDialog", () => {
     await openDialog(user);
 
     expect(screen.getByLabelText(/Cutie poștală/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/Email furnizor/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Alege un furnizor/i })).toBeInTheDocument();
     expect(screen.getByLabelText(/Serie sasiu/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/Cod piesă/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/Număr înmatriculare/i)).toBeInTheDocument();
@@ -118,7 +129,7 @@ describe("NewOrderDialog", () => {
     const { user } = setup([MB1]);
     await openDialog(user);
 
-    await user.type(screen.getByLabelText(/Email furnizor/i), "furnizor@test.ro");
+    await pickVendor(user);
     await user.type(screen.getByLabelText(/Serie sasiu/i), "WVWZZZ1KZAW000001");
     await user.type(screen.getByLabelText(/Cod piesă/i), "Filtru ulei");
     await user.type(screen.getByLabelText(/Număr înmatriculare/i), "B 123 ABC");
@@ -128,7 +139,7 @@ describe("NewOrderDialog", () => {
     expect(mockMutate).toHaveBeenCalledOnce();
     expect(mockMutate).toHaveBeenCalledWith(
       {
-        vendorEmail: "furnizor@test.ro",
+        vendorId: "v1",
         chassisSeries: "WVWZZZ1KZAW000001",
         partCode: "Filtru ulei",
         mailboxId: "mb1",
@@ -142,7 +153,7 @@ describe("NewOrderDialog", () => {
     const { user } = setup([MB1]);
     await openDialog(user);
 
-    await user.type(screen.getByLabelText(/Email furnizor/i), "furnizor@test.ro");
+    await pickVendor(user);
     await user.type(screen.getByLabelText(/Serie sasiu/i), "WVWZZZ1KZAW000001");
     await user.type(screen.getByLabelText(/Număr înmatriculare/i), "B 123 ABC");
     await user.type(screen.getByLabelText(/Cod piesă/i), "Filtru ulei");

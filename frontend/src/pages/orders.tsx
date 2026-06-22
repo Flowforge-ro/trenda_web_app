@@ -11,9 +11,18 @@ import { OrderReviewDialog } from "@/components/orders/order-review-dialog";
 import { OfferDialog } from "@/components/orders/offer-dialog";
 import { FlagOrderButton } from "@/components/orders/flag-order-button";
 import { cn } from "@/lib/utils";
-import { CheckCircle2, RotateCw } from "lucide-react";
+import { CheckCircle2, RotateCw, ArrowUp, ArrowDown, ChevronsUpDown } from "lucide-react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useOrders, useResendOrder, useCloseOrder, formatDeliveryCountdown, type Order } from "@/lib/orders";
+
+type SortDir = "asc" | "desc";
+
+/** Sort key: earliest known delivery date in ms, or null when unknown (sorts last). */
+function deliveryKey(o: Order): number | null {
+  const iso = o.deliveryEarliest ?? o.deliveryLatest;
+  return iso ? new Date(iso).getTime() : null;
+}
 
 const statusStyles: Record<string, string> = {
   "Livrat": "bg-success/10 text-success",
@@ -111,7 +120,28 @@ const columns = ["Numar comanda", "Piesa", "Serie sasiu", "Status", "Timp livrar
 
 export function OrdersPage() {
   const { data, isLoading, hasNextPage, fetchNextPage, isFetchingNextPage } = useOrders();
-  const orders = data?.pages.flatMap((p) => p.orders) ?? [];
+  const [sort, setSort] = useState<SortDir | null>(null);
+
+  // Sorting is client-side, so it must see every order: pull all remaining
+  // pages once a sort is active (infinite scroll otherwise loads 50 at a time).
+  useEffect(() => {
+    if (sort && hasNextPage && !isFetchingNextPage) fetchNextPage();
+  }, [sort, hasNextPage, isFetchingNextPage, fetchNextPage]);
+
+  const loaded = data?.pages.flatMap((p) => p.orders) ?? [];
+  const orders = sort
+    ? [...loaded].sort((a, b) => {
+        const ka = deliveryKey(a), kb = deliveryKey(b);
+        if (ka === null && kb === null) return 0;
+        if (ka === null) return 1; // unknown dates sink to the bottom either way
+        if (kb === null) return -1;
+        return sort === "asc" ? ka - kb : kb - ka;
+      })
+    : loaded;
+
+  // null -> asc -> desc -> null
+  const toggleSort = () => setSort((s) => (s === null ? "asc" : s === "asc" ? "desc" : null));
+  const loadingAll = sort != null && hasNextPage;
 
   return (
     <div className="p-8">
@@ -131,11 +161,31 @@ export function OrdersPage() {
         <Table>
           <TableHeader>
             <TableRow className="bg-gray-50 hover:bg-gray-50">
-              {columns.map((c, i) => (
-                <TableHead key={i} className="px-4 text-muted-foreground">
-                  {c}
-                </TableHead>
-              ))}
+              {columns.map((c, i) =>
+                c === "Timp livrare" ? (
+                  <TableHead key={i} className="px-4 text-muted-foreground">
+                    <button
+                      type="button"
+                      onClick={toggleSort}
+                      className="inline-flex items-center gap-1 hover:text-foreground"
+                      title="Sortează după timp de livrare"
+                    >
+                      {c}
+                      {sort === "asc" ? (
+                        <ArrowUp className="h-3.5 w-3.5" />
+                      ) : sort === "desc" ? (
+                        <ArrowDown className="h-3.5 w-3.5" />
+                      ) : (
+                        <ChevronsUpDown className="h-3.5 w-3.5 opacity-50" />
+                      )}
+                    </button>
+                  </TableHead>
+                ) : (
+                  <TableHead key={i} className="px-4 text-muted-foreground">
+                    {c}
+                  </TableHead>
+                )
+              )}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -145,6 +195,8 @@ export function OrdersPage() {
                   Se încarcă...
                 </TableCell>
               </TableRow>
+            ) : orders.length === 0 ? (
+              <TableRow><TableCell colSpan={5} className="px-4 py-6 text-center text-muted-foreground">Nicio comandă.</TableCell></TableRow>
             ) : (
               orders.map((o) => (
                 <TableRow key={o.id} className="hover:bg-gray-100">
@@ -179,7 +231,11 @@ export function OrdersPage() {
         </Table>
       </div>
 
-      {hasNextPage && (
+      {loadingAll ? (
+        <div className="mt-4 flex justify-center text-sm text-muted-foreground">
+          Se încarcă toate comenzile pentru sortare...
+        </div>
+      ) : hasNextPage ? (
         <div className="mt-4 flex justify-center">
           <Button
             type="button"
@@ -190,7 +246,7 @@ export function OrdersPage() {
             {isFetchingNextPage ? "Se încarcă..." : "Încarcă mai multe"}
           </Button>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

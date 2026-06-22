@@ -16,7 +16,7 @@ export const ordersRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(400).send({ error: "Invalid order payload", details: parsed.error.flatten() });
     }
     const result = await createOrder(user.orgId, user.id, parsed.data);
-    if (!result) return reply.status(400).send({ error: "Invalid mailbox" });
+    if (!result) return reply.status(400).send({ error: "Invalid mailbox or vendor" });
     return reply.status(201).send(result);
   });
 

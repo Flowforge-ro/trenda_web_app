@@ -10,7 +10,7 @@ import { resolveRelativeDelivery } from "../../lib/extraction.js";
 import type { Order } from "../../generated/prisma/client.js";
 
 export const orderInputSchema = z.object({
-  vendorEmail: z.string().email(),
+  vendorId: z.string().min(1),
   chassisSeries: z.string().min(1),
   partCode: z.string().min(1),
   mailboxId: z.string().min(1),
@@ -57,12 +57,19 @@ export async function createOrder(
   });
   if (!mailbox) return null;
 
+  const vendor = await deps.prisma.vendor.findFirst({
+    where: { id: input.vendorId, orgId },
+    select: { id: true, email: true },
+  });
+  if (!vendor) return null;
+
   const order = await deps.prisma.order.create({
     data: {
       orgId,
       createdByUserId: userId,
       mailboxId: mailbox.id,
-      vendorEmail: input.vendorEmail,
+      vendorId: vendor.id,
+      vendorEmail: vendor.email, // denormalized so the rest of the pipeline keeps using the email
       chassisSeries: input.chassisSeries,
       partCode: input.partCode,
       registrationNumber: input.registrationNumber,

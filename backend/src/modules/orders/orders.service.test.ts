@@ -2,11 +2,18 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createOrder, resendOrderEmail, listOrders, closeOrder, acceptOffer, rejectOffer, flagOrder, unflagOrder, type OrderDeps } from "./orders.service.js";
 
+// Stored-order shape (carries vendorEmail) used by order.findFirst spreads below.
 const input = { vendorEmail: "f@ex.ro", chassisSeries: "WVW001", partCode: "Filtru", mailboxId: "M1", registrationNumber: "B-123-XYZ" };
+// Create payload now references a Vendor by id; createOrder resolves its email.
+const createInput = { vendorId: "V1", chassisSeries: "WVW001", partCode: "Filtru", mailboxId: "M1", registrationNumber: "B-123-XYZ" };
 
 function makeDeps(overrides: Partial<OrderDeps> = {}): OrderDeps {
   return {
     prisma: {
+      vendor: {
+        findFirst: async ({ where }: any) =>
+          where.id === "V1" && where.orgId === "O1" ? { id: "V1", email: "f@ex.ro" } : null,
+      },
       mailbox: {
         findFirst: async ({ where }: any) =>
           where.id === "M1" && where.orgId === "O1" && where.type === "vendor_facing" ? { id: "M1" } : null,
@@ -34,21 +41,33 @@ function makeDeps(overrides: Partial<OrderDeps> = {}): OrderDeps {
 }
 
 test("createOrder sends from the chosen vendor mailbox and records scope", async () => {
-  const result = await createOrder("O1", "U1", input, makeDeps());
+  const sentTo: string[] = [];
+  const result = await createOrder("O1", "U1", createInput, makeDeps({
+    createAndSendMail: async (_token: string, msg: any) => {
+      sentTo.push(msg.to);
+      return { internetMessageId: "<id@x>", conversationId: null };
+    },
+  }));
   assert.ok(result);
   assert.equal(result!.emailSent, true);
+  assert.equal(sentTo[0], "f@ex.ro"); // email resolved from the vendor entity
   assert.equal(result!.order.internetMessageId, "<id@x>");
   assert.equal(result!.order.emailStatus, "trimis");
 });
 
 test("createOrder returns null for a mailbox that is not a vendor mailbox in the org", async () => {
-  const result = await createOrder("O1", "U1", { ...input, mailboxId: "BAD" }, makeDeps());
+  const result = await createOrder("O1", "U1", { ...createInput, mailboxId: "BAD" }, makeDeps());
+  assert.equal(result, null);
+});
+
+test("createOrder returns null for a vendor outside the caller's org", async () => {
+  const result = await createOrder("O1", "U1", { ...createInput, vendorId: "BAD" }, makeDeps());
   assert.equal(result, null);
 });
 
 test("createOrder marks emailStatus=esuat when the send fails", async () => {
   const deps = makeDeps({ createAndSendMail: async () => { throw new Error("graph down"); } });
-  const result = await createOrder("O1", "U1", input, deps);
+  const result = await createOrder("O1", "U1", createInput, deps);
   assert.equal(result!.emailSent, false);
   assert.equal(result!.order.emailStatus, "esuat");
 });

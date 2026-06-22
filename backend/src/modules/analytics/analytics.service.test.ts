@@ -25,11 +25,13 @@ function deps(rows: { kind: string; emails: number; costUsd: number }[]): Analyt
 test("getTimeSaved derives hours and RON from emails sent + replies parsed", async () => {
   const d = deps([
     { kind: "email_write", emails: 10, costUsd: 0 }, // counts as 10 emails
+    { kind: "email_read", emails: 7, costUsd: 0 },    // 7 emails read
     { kind: "llm", emails: 0, costUsd: 0.5 },         // 1 reply parsed, $0.50
     { kind: "llm", emails: 0, costUsd: 0.5 },         // 1 reply parsed, $0.50
   ]);
   const r = await getTimeSaved("ORG1", {}, d);
   assert.equal(r.emailsSent, 10);
+  assert.equal(r.emailsRead, 7);
   assert.equal(r.repliesParsed, 2);
   // 10*3 + 2*4 = 38 min
   assert.equal(r.minutesSaved, 38);
@@ -79,7 +81,9 @@ test("getVendorScorecard aggregates response time, review rate and bounce rate p
   ];
   const [row] = await getVendorScorecard("ORG1", {}, now, vendorDeps(orders));
   assert.equal(row.vendorEmail, "a@x");
+  assert.equal(row.name, null); // no Vendor entities in this fake
   assert.equal(row.orders, 2);
+  assert.equal(row.orderShare, 1); // sole vendor handles all orders
   assert.equal(row.answered, 1);
   assert.equal(row.avgResponseHours, 2);
   assert.equal(row.needsReviewRate, 0.5);
