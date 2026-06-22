@@ -1,7 +1,7 @@
 // backend/src/modules/analytics/analytics.routes.ts
 import type { FastifyPluginAsync } from "fastify";
 import { requireRole } from "../../lib/auth-context.js";
-import { analyticsQuerySchema, getTimeSaved, getDeliveryBoard, getVendorScorecard } from "./analytics.service.js";
+import { analyticsQuerySchema, getTimeSaved, getDeliveryBoard, getVendorScorecard, getPriceIntelligence } from "./analytics.service.js";
 
 export const analyticsRoutes: FastifyPluginAsync = async (app) => {
   app.get("/analytics/time-saved", async (request, reply) => {
@@ -27,5 +27,14 @@ export const analyticsRoutes: FastifyPluginAsync = async (app) => {
     const parsed = analyticsQuerySchema.safeParse(request.query);
     if (!parsed.success) return reply.status(400).send({ error: "Invalid query" });
     return getVendorScorecard(user.orgId, parsed.data, new Date());
+  });
+
+  app.get("/analytics/prices", async (request, reply) => {
+    const user = await requireRole("member", request, reply);
+    if (!user) return reply;
+    if (!user.orgId) return reply.status(400).send({ error: "No organization" });
+    const parsed = analyticsQuerySchema.safeParse(request.query);
+    if (!parsed.success) return reply.status(400).send({ error: "Invalid query" });
+    return getPriceIntelligence(user.orgId, parsed.data);
   });
 };

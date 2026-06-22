@@ -2,6 +2,7 @@
 import { z } from "zod";
 import { prisma } from "../../prisma.js";
 import { ANALYTICS_CONFIG as C } from "./analytics.config.js";
+import { parseOfferPrice } from "./analytics.price.js";
 
 export interface AnalyticsDeps { prisma: typeof prisma; }
 const defaultDeps: AnalyticsDeps = { prisma };
@@ -125,4 +126,38 @@ export async function getVendorScorecard(orgId: string, query: AnalyticsQuery, n
     bounceRate: a.orders > 0 ? a.bounced / a.orders : 0,
     onTimeRate: a.closedWithDeadline > 0 ? a.onTime / a.closedWithDeadline : null,
   })).sort((x, y) => y.orders - x.orders);
+}
+
+export interface PartPrice {
+  partCode: string; currency: string; count: number; avg: number; min: number; max: number;
+  vendors: { vendorEmail: string; avg: number }[];
+}
+
+export async function getPriceIntelligence(orgId: string, query: AnalyticsQuery, deps: AnalyticsDeps = defaultDeps): Promise<PartPrice[]> {
+  const rows = await deps.prisma.order.findMany({
+    where: { orgId, offerPrice: { not: null }, ...createdAtWhere(query) },
+    select: { partCode: true, vendorEmail: true, offerPrice: true },
+  });
+
+  type Acc = { sum: number; count: number; min: number; max: number; byVendor: Map<string, { sum: number; count: number }> };
+  const byKey = new Map<string, Acc>(); // key = partCode + "|" + currency
+  for (const o of rows) {
+    const parsed = parseOfferPrice(o.offerPrice);
+    if (!parsed) continue;
+    const key = `${o.partCode}|${parsed.currency}`;
+    const a = byKey.get(key) ?? { sum: 0, count: 0, min: Infinity, max: -Infinity, byVendor: new Map() };
+    a.sum += parsed.amount; a.count += 1;
+    a.min = Math.min(a.min, parsed.amount); a.max = Math.max(a.max, parsed.amount);
+    const v = a.byVendor.get(o.vendorEmail) ?? { sum: 0, count: 0 };
+    v.sum += parsed.amount; v.count += 1; a.byVendor.set(o.vendorEmail, v);
+    byKey.set(key, a);
+  }
+
+  return [...byKey].map(([key, a]) => {
+    const [partCode, currency] = key.split("|");
+    return {
+      partCode, currency, count: a.count, avg: a.sum / a.count, min: a.min, max: a.max,
+      vendors: [...a.byVendor].map(([vendorEmail, v]) => ({ vendorEmail, avg: v.sum / v.count })).sort((x, y) => x.avg - y.avg),
+    };
+  }).sort((x, y) => y.count - x.count);
 }

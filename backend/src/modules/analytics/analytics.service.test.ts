@@ -86,3 +86,22 @@ test("getVendorScorecard aggregates response time, review rate and bounce rate p
   assert.equal(row.bounceRate, 0.5);
   assert.equal(row.onTimeRate, 1); // the one closed order closed before deliveryLatest
 });
+
+import { getPriceIntelligence } from "./analytics.service.js";
+
+test("getPriceIntelligence averages parsed prices per part and currency", async () => {
+  const orders = [
+    { partCode: "P1", vendorEmail: "a@x", offerPrice: "100 RON" },
+    { partCode: "P1", vendorEmail: "b@x", offerPrice: "200 RON" },
+    { partCode: "P1", vendorEmail: "c@x", offerPrice: "call" },   // unparseable, ignored
+    { partCode: "P2", vendorEmail: "a@x", offerPrice: "50 EUR" },
+  ];
+  const deps: AnalyticsDeps = { prisma: { order: { findMany: async () => orders } } as any };
+  const res = await getPriceIntelligence("ORG1", {}, deps);
+  const p1 = res.find((r) => r.partCode === "P1" && r.currency === "RON")!;
+  assert.equal(p1.count, 2);
+  assert.equal(p1.avg, 150);
+  assert.equal(p1.min, 100);
+  assert.equal(p1.max, 200);
+  assert.equal(p1.vendors.length, 2);
+});
