@@ -1,4 +1,4 @@
-import { useTimeSaved, useDeliveryBoard, useVendorScorecard } from "../lib/analytics";
+import { useTimeSaved, useDeliveryBoard, useVendorScorecard, usePriceIntelligence } from "../lib/analytics";
 
 function Card({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
@@ -15,6 +15,7 @@ export function AnalyticsPage() {
   const ts = data;
   const { data: board } = useDeliveryBoard();
   const { data: vendors } = useVendorScorecard();
+  const { data: prices } = usePriceIntelligence();
   const pct = (n: number) => `${(n * 100).toFixed(0)}%`;
   const fmtDate = (s: string | null) => (s ? new Date(s).toLocaleDateString("ro-RO") : "—");
   return (
@@ -69,6 +70,27 @@ export function AnalyticsPage() {
                 <td>{v.onTimeRate != null ? pct(v.onTimeRate) : "—"}</td>
                 <td>{pct(v.needsReviewRate)}</td>
                 <td>{pct(v.bounceRate)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+      <section className="mt-8">
+        <h2 className="mb-3 text-lg font-semibold text-foreground">Prețuri piese</h2>
+        <table className="w-full text-sm">
+          <thead><tr className="text-left text-muted-foreground">
+            <th className="py-2">Piesa</th><th>Monedă</th><th>Oferte</th><th>Medie</th><th>Min</th><th>Max</th><th>Cel mai ieftin furnizor</th>
+          </tr></thead>
+          <tbody>
+            {(prices ?? []).map((p) => (
+              <tr key={`${p.partCode}-${p.currency}`} className="border-t border-border">
+                <td className="py-2">{p.partCode}</td>
+                <td>{p.currency}</td>
+                <td>{p.count}</td>
+                <td>{p.avg.toFixed(2)}</td>
+                <td>{p.min.toFixed(2)}</td>
+                <td>{p.max.toFixed(2)}</td>
+                <td>{p.vendors[0]?.vendorEmail ?? "—"}</td>
               </tr>
             ))}
           </tbody>

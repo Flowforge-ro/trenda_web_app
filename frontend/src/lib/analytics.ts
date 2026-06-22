@@ -48,3 +48,16 @@ async function fetchVendors(): Promise<VendorRow[]> {
 export function useVendorScorecard() {
   return useQuery({ queryKey: ["analytics", "vendors"], queryFn: fetchVendors });
 }
+
+export interface PartPrice {
+  partCode: string; currency: string; count: number; avg: number; min: number; max: number;
+  vendors: { vendorEmail: string; avg: number }[];
+}
+async function fetchPrices(): Promise<PartPrice[]> {
+  const res = await apiFetch("/analytics/prices");
+  if (!res.ok) throw new Error("Nu s-au putut încărca prețurile");
+  return res.json();
+}
+export function usePriceIntelligence() {
+  return useQuery({ queryKey: ["analytics", "prices"], queryFn: fetchPrices });
+}
