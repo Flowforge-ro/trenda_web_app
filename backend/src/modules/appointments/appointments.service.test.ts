@@ -22,6 +22,7 @@ test("listAppointments scopes by org, paginates, computes missing labels", async
     appointmentFieldConfig: { findMany: async () => CONFIG },
   };
   const result = await listAppointments("org1", { limit: 50 }, { prisma: fake as never });
+  assert.deepEqual(result.appointments[0].filledFields, [{ label: "Nume", value: "Ion" }]);
   assert.deepEqual(result.appointments[0].missingLabels, ["Telefon"]);
   assert.equal(result.nextCursor, null);
 });

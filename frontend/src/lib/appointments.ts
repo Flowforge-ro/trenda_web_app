@@ -6,6 +6,7 @@ export interface Appointment {
   customerEmail: string;
   status: "collecting" | "complete";
   fields: Record<string, string | null>;
+  filledFields: { label: string; value: string }[];
   missingLabels: string[];
   lastMessageAt: string;
   createdAt: string;

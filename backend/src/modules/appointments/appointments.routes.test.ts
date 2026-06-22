@@ -83,6 +83,7 @@ test("GET /appointments happy path scopes to org and includes missingLabels", as
   assert.equal(res.statusCode, 200);
   const body = res.json();
   assert.equal(lastApptFindMany.where.orgId, ORG_ID);
+  assert.deepEqual(body.appointments[0].filledFields, [{ label: "Nume", value: "Ion" }]);
   assert.deepEqual(body.appointments[0].missingLabels, ["Telefon"]);
   assert.equal(body.nextCursor, null);
 });

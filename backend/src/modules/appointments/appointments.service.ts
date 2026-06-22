@@ -63,6 +63,9 @@ export async function listAppointments(
     const values = a.fields as Record<string, string | null>;
     return {
       ...a,
+      filledFields: config
+        .filter((f) => values[f.key] != null && values[f.key] !== "")
+        .map((f) => ({ label: f.label, value: values[f.key] as string })),
       missingLabels: config.filter((f) => f.required && !values[f.key]).map((f) => f.label),
     };
   });

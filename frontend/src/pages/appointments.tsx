@@ -23,14 +23,13 @@ function StatusBadge({ status }: { status: Appointment["status"] }) {
   );
 }
 
-function FilledFields({ fields }: { fields: Appointment["fields"] }) {
-  const entries = Object.entries(fields).filter(([, v]) => v != null && v !== "");
-  if (entries.length === 0) return <span className="text-muted-foreground">—</span>;
+function FilledFields({ fields }: { fields: Appointment["filledFields"] }) {
+  if (fields.length === 0) return <span className="text-muted-foreground">—</span>;
   return (
     <div className="space-y-0.5">
-      {entries.map(([k, v]) => (
-        <div key={k} className="text-xs">
-          <span className="text-muted-foreground">{k}:</span> <span className="text-foreground">{v}</span>
+      {fields.map((f) => (
+        <div key={f.label} className="text-xs">
+          <span className="text-muted-foreground">{f.label}:</span> <span className="text-foreground">{f.value}</span>
         </div>
       ))}
     </div>
@@ -71,7 +70,7 @@ export function AppointmentsPage() {
                 <TableRow key={a.id} className="hover:bg-gray-100">
                   <TableCell className="px-4 py-3 font-medium text-foreground">{a.customerEmail}</TableCell>
                   <TableCell className="px-4 py-3"><StatusBadge status={a.status} /></TableCell>
-                  <TableCell className="px-4 py-3"><FilledFields fields={a.fields} /></TableCell>
+                  <TableCell className="px-4 py-3"><FilledFields fields={a.filledFields} /></TableCell>
                   <TableCell className="px-4 py-3 text-muted-foreground">
                     {a.missingLabels.length > 0 ? a.missingLabels.join(", ") : "—"}
                   </TableCell>
