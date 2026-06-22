@@ -1,4 +1,5 @@
-import { useTimeSaved, useDeliveryBoard, useVendorScorecard, usePriceIntelligence } from "../lib/analytics";
+import { useTimeSaved, useDeliveryBoard } from "../lib/analytics";
+// Disabled for now: useVendorScorecard, usePriceIntelligence (see commented sections below).
 
 function Card({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
@@ -14,9 +15,10 @@ export function AnalyticsPage() {
   const { data } = useTimeSaved();
   const ts = data;
   const { data: board } = useDeliveryBoard();
-  const { data: vendors } = useVendorScorecard();
-  const { data: prices } = usePriceIntelligence();
-  const pct = (n: number) => `${(n * 100).toFixed(0)}%`;
+  // Disabled for now:
+  // const { data: vendors } = useVendorScorecard();
+  // const { data: prices } = usePriceIntelligence();
+  // const pct = (n: number) => `${(n * 100).toFixed(0)}%`;
   const fmtDate = (s: string | null) => (s ? new Date(s).toLocaleDateString("ro-RO") : "—");
   return (
     <div className="p-8">
@@ -55,6 +57,8 @@ export function AnalyticsPage() {
           </tbody>
         </table>
       </section>
+      {/* Disabled for now — vendor scorecard & price intelligence.
+          Re-enable by uncommenting these sections plus the hooks/imports above.
       <section className="mt-8">
         <h2 className="mb-3 text-lg font-semibold text-foreground">Furnizori</h2>
         <table className="w-full text-sm">
@@ -96,6 +100,7 @@ export function AnalyticsPage() {
           </tbody>
         </table>
       </section>
+      */}
     </div>
   );
 }
