@@ -66,9 +66,9 @@ interface ParsedFields {
   deliveryQuote: string | null;
   isOffer: boolean;
   price: string | null;
-  // false when the requested partCode is absent from a multi-part document;
-  // null/true otherwise. Signals the extracted values can't be trusted.
-  partCodeFound: boolean | null;
+  // The part code of the line the model used for delivery/price, verbatim from
+  // the document. We compare it against the requested code to confirm the match.
+  partCode: string | null;
 }
 
 // ---- Prompts (loaded once from backend/prompts, outside dist/) ----
@@ -105,9 +105,9 @@ const OPENAI_RESPONSE_FORMAT = {
         deliveryQuote: { type: ["string", "null"] },
         isOffer: { type: "boolean" },
         price: { type: ["string", "null"] },
-        partCodeFound: { type: ["boolean", "null"] },
+        partCode: { type: ["string", "null"] },
       },
-      required: ["orderNumber", "deliveryTime", "deliveryEarliest", "deliveryLatest", "orderNumberQuote", "deliveryQuote", "isOffer", "price", "partCodeFound"],
+      required: ["orderNumber", "deliveryTime", "deliveryEarliest", "deliveryLatest", "orderNumberQuote", "deliveryQuote", "isOffer", "price", "partCode"],
     },
   },
 } as const;
@@ -198,7 +198,7 @@ const geminiProvider: LlmProvider = {
             deliveryQuote: { type: Type.STRING, nullable: true },
             isOffer: { type: Type.BOOLEAN, nullable: true },
             price: { type: Type.STRING, nullable: true },
-            partCodeFound: { type: Type.BOOLEAN, nullable: true },
+            partCode: { type: Type.STRING, nullable: true },
           },
         },
       },
@@ -252,6 +252,18 @@ async function generateWithFallback(
 export function normalizePrice(price: string | null): string | null {
   if (!price) return null;
   return price.replace(/(?<!\p{L})(lei|ron)(?!\p{L})/giu, "RON");
+}
+
+/**
+ * True when the model's matched part code equals the requested one, ignoring
+ * case and non-alphanumeric separators (spaces, dashes, dots) that vendors
+ * format inconsistently. A null/empty model code never matches.
+ */
+export function partCodeMatches(requested: string, found: string | null): boolean {
+  if (!found) return false;
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const r = norm(requested);
+  return r.length > 0 && r === norm(found);
 }
 
 function parseIsoDate(s: string): Date | null {
@@ -321,9 +333,10 @@ export async function extractOrderInfo(
 ): Promise<ExtractionResult> {
   const { parsed, usage } = await generateWithFallback(deps, source, today, ctx);
 
-  // The requested partCode isn't in this document: any values the model returned
-  // would be from the wrong line. Discard them and force human review.
-  if (parsed.partCodeFound === false) {
+  // When a part code is requested, the model returns the code of the line it used.
+  // If it doesn't match (or the model found no matching line), the extracted
+  // values would be from the wrong line — discard them and force human review.
+  if (ctx.partCode && !partCodeMatches(ctx.partCode, parsed.partCode)) {
     return {
       orderNumber: null,
       deliveryTime: null,

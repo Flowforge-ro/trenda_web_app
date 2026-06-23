@@ -358,23 +358,45 @@ test("extractOrderInfo surfaces isOffer and price from the model", async () => {
     deliveryTime: "1 iulie", orderNumberQuote: "CMD-1", deliveryQuote: "1 iulie",
     isOffer: true, price: "120 RON",
   }));
-  const r = await extractOrderInfo({ kind: "text", body: "CMD-1 1 iulie" }, "2026-06-17", { partCode: "ABC" }, deps);
+  const r = await extractOrderInfo({ kind: "text", body: "CMD-1 1 iulie" }, "2026-06-17", { partCode: null }, deps);
   assert.equal(r.isOffer, true);
   assert.equal(r.price, "120 RON");
 });
 
-test("partCodeFound=false discards extracted values and forces review", async () => {
+test("partCode mismatch discards extracted values and forces review", async () => {
   const deps = fakeDeps(JSON.stringify({
     orderNumber: "CMD-1", deliveryEarliest: "2026-07-01", deliveryLatest: "2026-07-01",
     deliveryTime: "1 iulie", orderNumberQuote: "CMD-1", deliveryQuote: "1 iulie",
-    isOffer: true, price: "120 RON", partCodeFound: false,
+    isOffer: true, price: "120 RON", partCode: "OTHER-99",
   }));
-  const r = await extractOrderInfo({ kind: "text", body: "CMD-1 1 iulie" }, "2026-06-17", { partCode: "MISSING" }, deps);
+  const r = await extractOrderInfo({ kind: "text", body: "CMD-1 1 iulie" }, "2026-06-17", { partCode: "ABC-123" }, deps);
   assert.equal(r.orderNumber, null);
   assert.equal(r.deliveryEarliest, null);
   assert.equal(r.price, null);
   assert.equal(r.isOffer, false);
   assert.equal(r.status, "needs_review");
+});
+
+test("partCode match (ignoring separators/case) keeps extracted values", async () => {
+  const deps = fakeDeps(JSON.stringify({
+    orderNumber: "CMD-1", deliveryEarliest: "2026-07-01", deliveryLatest: "2026-07-01",
+    deliveryTime: "1 iulie", orderNumberQuote: "CMD-1", deliveryQuote: "1 iulie",
+    isOffer: true, price: "120 RON", partCode: "abc 123",
+  }));
+  const r = await extractOrderInfo({ kind: "text", body: "CMD-1 1 iulie" }, "2026-06-17", { partCode: "ABC-123" }, deps);
+  assert.equal(r.orderNumber, "CMD-1");
+  assert.equal(r.status, "extracted");
+});
+
+test("missing partCode in result forces review when one was requested", async () => {
+  const deps = fakeDeps(JSON.stringify({
+    orderNumber: "CMD-1", deliveryEarliest: "2026-07-01", deliveryLatest: "2026-07-01",
+    deliveryTime: "1 iulie", orderNumberQuote: "CMD-1", deliveryQuote: "1 iulie",
+    isOffer: true, price: "120 RON", partCode: null,
+  }));
+  const r = await extractOrderInfo({ kind: "text", body: "CMD-1 1 iulie" }, "2026-06-17", { partCode: "ABC-123" }, deps);
+  assert.equal(r.status, "needs_review");
+  assert.equal(r.orderNumber, null);
 });
 
 test("normalizePrice maps lei/ron (any case) to RON, leaves other currencies", () => {
@@ -393,7 +415,7 @@ test("extractOrderInfo normalizes a lei price to RON", async () => {
     deliveryTime: "1 iulie", orderNumberQuote: "CMD-1", deliveryQuote: "1 iulie",
     isOffer: true, price: "350 lei",
   }));
-  const r = await extractOrderInfo({ kind: "text", body: "350 lei" }, "2026-06-17", { partCode: "ABC" }, deps);
+  const r = await extractOrderInfo({ kind: "text", body: "350 lei" }, "2026-06-17", { partCode: null }, deps);
   assert.equal(r.price, "350 RON");
 });
 
@@ -403,7 +425,7 @@ test("extractOrderInfo defaults isOffer=false and price=null when absent", async
     deliveryTime: "1 iulie", orderNumberQuote: "CMD-2", deliveryQuote: "1 iulie",
     isOffer: false, price: null,
   }));
-  const r = await extractOrderInfo({ kind: "text", body: "CMD-2" }, "2026-06-17", { partCode: "ABC" }, deps);
+  const r = await extractOrderInfo({ kind: "text", body: "CMD-2" }, "2026-06-17", { partCode: null }, deps);
   assert.equal(r.isOffer, false);
   assert.equal(r.price, null);
 });
