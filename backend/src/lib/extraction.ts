@@ -66,6 +66,9 @@ interface ParsedFields {
   deliveryQuote: string | null;
   isOffer: boolean;
   price: string | null;
+  // false when the requested partCode is absent from a multi-part document;
+  // null/true otherwise. Signals the extracted values can't be trusted.
+  partCodeFound: boolean | null;
 }
 
 // ---- Prompts (loaded once from backend/prompts, outside dist/) ----
@@ -102,8 +105,9 @@ const OPENAI_RESPONSE_FORMAT = {
         deliveryQuote: { type: ["string", "null"] },
         isOffer: { type: "boolean" },
         price: { type: ["string", "null"] },
+        partCodeFound: { type: ["boolean", "null"] },
       },
-      required: ["orderNumber", "deliveryTime", "deliveryEarliest", "deliveryLatest", "orderNumberQuote", "deliveryQuote", "isOffer", "price"],
+      required: ["orderNumber", "deliveryTime", "deliveryEarliest", "deliveryLatest", "orderNumberQuote", "deliveryQuote", "isOffer", "price", "partCodeFound"],
     },
   },
 } as const;
@@ -194,6 +198,7 @@ const geminiProvider: LlmProvider = {
             deliveryQuote: { type: Type.STRING, nullable: true },
             isOffer: { type: Type.BOOLEAN, nullable: true },
             price: { type: Type.STRING, nullable: true },
+            partCodeFound: { type: Type.BOOLEAN, nullable: true },
           },
         },
       },
@@ -315,6 +320,23 @@ export async function extractOrderInfo(
   deps: ExtractionDeps = defaultDeps
 ): Promise<ExtractionResult> {
   const { parsed, usage } = await generateWithFallback(deps, source, today, ctx);
+
+  // The requested partCode isn't in this document: any values the model returned
+  // would be from the wrong line. Discard them and force human review.
+  if (parsed.partCodeFound === false) {
+    return {
+      orderNumber: null,
+      deliveryTime: null,
+      deliveryEarliest: null,
+      deliveryLatest: null,
+      orderNumberGrounded: true,
+      deliveryGrounded: true,
+      status: "needs_review",
+      isOffer: false,
+      price: null,
+      usage,
+    };
+  }
 
   const orderNumber = parsed.orderNumber || null;
 

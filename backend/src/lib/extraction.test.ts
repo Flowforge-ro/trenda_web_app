@@ -363,6 +363,20 @@ test("extractOrderInfo surfaces isOffer and price from the model", async () => {
   assert.equal(r.price, "120 RON");
 });
 
+test("partCodeFound=false discards extracted values and forces review", async () => {
+  const deps = fakeDeps(JSON.stringify({
+    orderNumber: "CMD-1", deliveryEarliest: "2026-07-01", deliveryLatest: "2026-07-01",
+    deliveryTime: "1 iulie", orderNumberQuote: "CMD-1", deliveryQuote: "1 iulie",
+    isOffer: true, price: "120 RON", partCodeFound: false,
+  }));
+  const r = await extractOrderInfo({ kind: "text", body: "CMD-1 1 iulie" }, "2026-06-17", { partCode: "MISSING" }, deps);
+  assert.equal(r.orderNumber, null);
+  assert.equal(r.deliveryEarliest, null);
+  assert.equal(r.price, null);
+  assert.equal(r.isOffer, false);
+  assert.equal(r.status, "needs_review");
+});
+
 test("normalizePrice maps lei/ron (any case) to RON, leaves other currencies", () => {
   assert.equal(normalizePrice("1.234,56 lei"), "1.234,56 RON");
   assert.equal(normalizePrice("500 RON"), "500 RON");
