@@ -138,10 +138,28 @@ function openaiContent(source: ExtractionSource, today: string, ctx: ExtractionC
   ];
 }
 
+// Hard cap on any single LLM call. Without it a network-unreachable provider
+// hangs on the socket for the SDK's default 10-min timeout (×retries) — the
+// pipeline goes silent after llm.request with no error to show. Configurable.
+export const LLM_TIMEOUT_MS = Number(process.env.LLM_TIMEOUT_MS) || 90_000;
+
+/** Reject if `p` doesn't settle within `ms`, so a hung provider fails fast. */
+export async function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+  });
+  try {
+    return await Promise.race([p, timeout]);
+  } finally {
+    clearTimeout(timer!);
+  }
+}
+
 let openaiClient: OpenAI | null = null;
 /** Lazily-initialised shared OpenAI client (reused by appointment-extraction). */
 export function getOpenAI(): OpenAI {
-  return (openaiClient ??= new OpenAI({ apiKey: process.env.OPENAI_API_KEY }));
+  return (openaiClient ??= new OpenAI({ apiKey: process.env.OPENAI_API_KEY, timeout: LLM_TIMEOUT_MS, maxRetries: 1 }));
 }
 
 const openaiProvider: LlmProvider = {
@@ -247,15 +265,16 @@ async function generateWithFallback(
 
   try {
     logEvent("llm.request", { provider: deps.primary.name, model: deps.primary.model, source: sourceMeta, prompt: promptText(source, today, ctx) }, ids);
-    const { text, usage } = await deps.primary.generate(source, today, ctx);
+    const { text, usage } = await withTimeout(deps.primary.generate(source, today, ctx), LLM_TIMEOUT_MS, deps.primary.name);
     logEvent("llm.response", { provider: deps.primary.name, model: deps.primary.model, response: text, usage }, ids);
     const parsed = JSON.parse(text) as ParsedFields;
     deps.logger.info({ provider: deps.primary.name, model: deps.primary.model }, "llm extraction");
     return { parsed, usage };
   } catch (err) {
     deps.logger.warn({ provider: deps.primary.name, err }, "llm primary failed; using fallback");
+    logEvent("llm.error", { provider: deps.primary.name, model: deps.primary.model, fallback: true, error: err instanceof Error ? err.message : String(err) }, ids);
     logEvent("llm.request", { provider: deps.fallback.name, model: deps.fallback.model, fallback: true, source: sourceMeta, prompt: promptText(source, today, ctx) }, ids);
-    const { text, usage } = await deps.fallback.generate(source, today, ctx);
+    const { text, usage } = await withTimeout(deps.fallback.generate(source, today, ctx), LLM_TIMEOUT_MS, deps.fallback.name);
     logEvent("llm.response", { provider: deps.fallback.name, model: deps.fallback.model, fallback: true, response: text, usage }, ids);
     const parsed = JSON.parse(text) as ParsedFields;
     deps.logger.info({ provider: deps.fallback.name, model: deps.fallback.model }, "llm extraction (fallback)");

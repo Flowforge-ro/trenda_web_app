@@ -2,7 +2,7 @@ import { GoogleGenAI, Type } from "@google/genai";
 import OpenAI from "openai";
 import { logger as defaultLogger } from "./logger.js";
 import { logEvent, type EventIds } from "./db-log.js";
-import { getOpenAI, type ContentPart, type ExtractionLogger } from "./extraction.js";
+import { getOpenAI, withTimeout, LLM_TIMEOUT_MS, type ContentPart, type ExtractionLogger } from "./extraction.js";
 import type { LlmUsage } from "./usage.js";
 
 // Models are configurable via .env (OPENAI_MODEL / GEMINI_MODEL), shared with
@@ -153,15 +153,16 @@ async function generateWithFallback(
   const prompt = parts.map((p) => ("text" in p ? p.text : `<binary ${p.inlineData.mimeType}>`)).join("\n");
   try {
     logEvent("appt.llm.request", { provider: deps.primary.name, model: deps.primary.model, classify, prompt }, ids);
-    const { text, usage } = await deps.primary.generate(parts, fields, classify);
+    const { text, usage } = await withTimeout(deps.primary.generate(parts, fields, classify), LLM_TIMEOUT_MS, deps.primary.name);
     logEvent("appt.llm.response", { provider: deps.primary.name, model: deps.primary.model, classify, response: text, usage }, ids);
     const parsed = JSON.parse(text) as Record<string, unknown>;
     deps.logger.info({ provider: deps.primary.name, model: deps.primary.model }, "appointment extraction");
     return { parsed, usage };
   } catch (err) {
     deps.logger.warn({ provider: deps.primary.name, err }, "appointment llm primary failed; using fallback");
+    logEvent("appt.llm.error", { provider: deps.primary.name, model: deps.primary.model, fallback: true, error: err instanceof Error ? err.message : String(err) }, ids);
     logEvent("appt.llm.request", { provider: deps.fallback.name, model: deps.fallback.model, classify, fallback: true, prompt }, ids);
-    const { text, usage } = await deps.fallback.generate(parts, fields, classify);
+    const { text, usage } = await withTimeout(deps.fallback.generate(parts, fields, classify), LLM_TIMEOUT_MS, deps.fallback.name);
     logEvent("appt.llm.response", { provider: deps.fallback.name, model: deps.fallback.model, classify, fallback: true, response: text, usage }, ids);
     const parsed = JSON.parse(text) as Record<string, unknown>;
     deps.logger.info({ provider: deps.fallback.name, model: deps.fallback.model }, "appointment extraction (fallback)");
