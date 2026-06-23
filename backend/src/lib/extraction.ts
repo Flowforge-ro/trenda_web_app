@@ -143,6 +143,16 @@ function openaiContent(source: ExtractionSource, today: string, ctx: ExtractionC
 // pipeline goes silent after llm.request with no error to show. Configurable.
 export const LLM_TIMEOUT_MS = Number(process.env.LLM_TIMEOUT_MS) || 90_000;
 
+// How many times to retry the whole primary→fallback pair when BOTH providers
+// fail (e.g. OpenAI throttling + Gemini 503 at once), with exponential backoff
+// between rounds. Lets a transient double-spike recover inside one extraction
+// instead of waiting for the next poll cycle.
+export const LLM_MAX_ATTEMPTS = Number(process.env.LLM_MAX_ATTEMPTS) || 3;
+export const LLM_RETRY_BASE_MS = Number(process.env.LLM_RETRY_BASE_MS) || 2_000;
+
+export const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+export const errMessage = (err: unknown) => (err instanceof Error ? err.message : String(err));
+
 /** Reject if `p` doesn't settle within `ms`, so a hung provider fails fast. */
 export async function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   let timer: ReturnType<typeof setTimeout>;
@@ -247,9 +257,31 @@ const defaultDeps: ExtractionDeps = {
   logger: defaultLogger,
 };
 
+/** One provider call: request log → timed generate → response log → parse. */
+async function runProvider(
+  deps: ExtractionDeps,
+  provider: LlmProvider,
+  source: ExtractionSource,
+  today: string,
+  ctx: ExtractionContext,
+  sourceMeta: Record<string, unknown>,
+  ids: { correlationId?: string | null; orgId?: string | null },
+  fallback: boolean
+): Promise<{ parsed: ParsedFields; usage: LlmUsage }> {
+  const tag = fallback ? { fallback: true } : {};
+  logEvent("llm.request", { provider: provider.name, model: provider.model, ...tag, source: sourceMeta, prompt: promptText(source, today, ctx) }, ids);
+  const { text, usage } = await withTimeout(provider.generate(source, today, ctx), LLM_TIMEOUT_MS, provider.name);
+  logEvent("llm.response", { provider: provider.name, model: provider.model, ...tag, response: text, usage }, ids);
+  const parsed = JSON.parse(text) as ParsedFields;
+  deps.logger.info({ provider: provider.name, model: provider.model }, fallback ? "llm extraction (fallback)" : "llm extraction");
+  return { parsed, usage };
+}
+
 /**
- * Run the primary provider; on any thrown error or empty/unparseable response,
- * fall back to the secondary provider. Logs which provider served the result.
+ * Try the primary provider; on any thrown error or empty/unparseable response,
+ * fall back to the secondary. When BOTH fail (transient throttling/503 spikes),
+ * retry the whole pair up to LLM_MAX_ATTEMPTS times with exponential backoff
+ * before giving up — the order then stays unextracted for the next-poll retry.
  */
 async function generateWithFallback(
   deps: ExtractionDeps,
@@ -263,23 +295,24 @@ async function generateWithFallback(
       ? { kind: "text" as const, bodyChars: source.body.length }
       : { kind: "binary" as const, mimeType: source.mimeType, byteSize: source.bytes.byteLength };
 
-  try {
-    logEvent("llm.request", { provider: deps.primary.name, model: deps.primary.model, source: sourceMeta, prompt: promptText(source, today, ctx) }, ids);
-    const { text, usage } = await withTimeout(deps.primary.generate(source, today, ctx), LLM_TIMEOUT_MS, deps.primary.name);
-    logEvent("llm.response", { provider: deps.primary.name, model: deps.primary.model, response: text, usage }, ids);
-    const parsed = JSON.parse(text) as ParsedFields;
-    deps.logger.info({ provider: deps.primary.name, model: deps.primary.model }, "llm extraction");
-    return { parsed, usage };
-  } catch (err) {
-    deps.logger.warn({ provider: deps.primary.name, err }, "llm primary failed; using fallback");
-    logEvent("llm.error", { provider: deps.primary.name, model: deps.primary.model, fallback: true, error: err instanceof Error ? err.message : String(err) }, ids);
-    logEvent("llm.request", { provider: deps.fallback.name, model: deps.fallback.model, fallback: true, source: sourceMeta, prompt: promptText(source, today, ctx) }, ids);
-    const { text, usage } = await withTimeout(deps.fallback.generate(source, today, ctx), LLM_TIMEOUT_MS, deps.fallback.name);
-    logEvent("llm.response", { provider: deps.fallback.name, model: deps.fallback.model, fallback: true, response: text, usage }, ids);
-    const parsed = JSON.parse(text) as ParsedFields;
-    deps.logger.info({ provider: deps.fallback.name, model: deps.fallback.model }, "llm extraction (fallback)");
-    return { parsed, usage };
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= LLM_MAX_ATTEMPTS; attempt++) {
+    try {
+      return await runProvider(deps, deps.primary, source, today, ctx, sourceMeta, ids, false);
+    } catch (errPrimary) {
+      deps.logger.warn({ provider: deps.primary.name, err: errPrimary }, "llm primary failed; using fallback");
+      logEvent("llm.error", { provider: deps.primary.name, model: deps.primary.model, attempt, error: errMessage(errPrimary) }, ids);
+      try {
+        return await runProvider(deps, deps.fallback, source, today, ctx, sourceMeta, ids, true);
+      } catch (errFallback) {
+        lastErr = errFallback;
+        deps.logger.warn({ provider: deps.fallback.name, err: errFallback, attempt }, "llm fallback failed");
+        logEvent("llm.error", { provider: deps.fallback.name, model: deps.fallback.model, attempt, fallback: true, error: errMessage(errFallback) }, ids);
+        if (attempt < LLM_MAX_ATTEMPTS) await sleep(LLM_RETRY_BASE_MS * 2 ** (attempt - 1));
+      }
+    }
   }
+  throw lastErr;
 }
 
 /**

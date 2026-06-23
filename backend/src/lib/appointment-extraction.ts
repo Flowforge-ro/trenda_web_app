@@ -2,7 +2,7 @@ import { GoogleGenAI, Type } from "@google/genai";
 import OpenAI from "openai";
 import { logger as defaultLogger } from "./logger.js";
 import { logEvent, type EventIds } from "./db-log.js";
-import { getOpenAI, withTimeout, LLM_TIMEOUT_MS, type ContentPart, type ExtractionLogger } from "./extraction.js";
+import { getOpenAI, withTimeout, sleep, errMessage, LLM_TIMEOUT_MS, LLM_MAX_ATTEMPTS, LLM_RETRY_BASE_MS, type ContentPart, type ExtractionLogger } from "./extraction.js";
 import type { LlmUsage } from "./usage.js";
 
 // Models are configurable via .env (OPENAI_MODEL / GEMINI_MODEL), shared with
@@ -141,8 +141,28 @@ const defaultDeps: AppointmentExtractionDeps = {
   logger: defaultLogger,
 };
 
-/** Run the primary provider; on any thrown error or unparseable response,
- *  fall back to the secondary. Mirrors extraction.ts:generateWithFallback. */
+/** One appointment provider call: request log → timed generate → response log → parse. */
+async function runApptProvider(
+  deps: AppointmentExtractionDeps,
+  provider: AppointmentLlmProvider,
+  parts: ContentPart[],
+  fields: AppointmentField[],
+  classify: boolean,
+  prompt: string,
+  ids: EventIds,
+  fallback: boolean
+): Promise<{ parsed: Record<string, unknown>; usage: LlmUsage }> {
+  const tag = fallback ? { fallback: true } : {};
+  logEvent("appt.llm.request", { provider: provider.name, model: provider.model, classify, ...tag, prompt }, ids);
+  const { text, usage } = await withTimeout(provider.generate(parts, fields, classify), LLM_TIMEOUT_MS, provider.name);
+  logEvent("appt.llm.response", { provider: provider.name, model: provider.model, classify, ...tag, response: text, usage }, ids);
+  const parsed = JSON.parse(text) as Record<string, unknown>;
+  deps.logger.info({ provider: provider.name, model: provider.model }, fallback ? "appointment extraction (fallback)" : "appointment extraction");
+  return { parsed, usage };
+}
+
+/** Try primary; fall back to secondary; retry the pair with backoff when BOTH
+ *  fail (transient throttling/503). Mirrors extraction.ts:generateWithFallback. */
 async function generateWithFallback(
   deps: AppointmentExtractionDeps,
   parts: ContentPart[],
@@ -151,23 +171,24 @@ async function generateWithFallback(
   ids: EventIds = {}
 ): Promise<{ parsed: Record<string, unknown>; usage: LlmUsage }> {
   const prompt = parts.map((p) => ("text" in p ? p.text : `<binary ${p.inlineData.mimeType}>`)).join("\n");
-  try {
-    logEvent("appt.llm.request", { provider: deps.primary.name, model: deps.primary.model, classify, prompt }, ids);
-    const { text, usage } = await withTimeout(deps.primary.generate(parts, fields, classify), LLM_TIMEOUT_MS, deps.primary.name);
-    logEvent("appt.llm.response", { provider: deps.primary.name, model: deps.primary.model, classify, response: text, usage }, ids);
-    const parsed = JSON.parse(text) as Record<string, unknown>;
-    deps.logger.info({ provider: deps.primary.name, model: deps.primary.model }, "appointment extraction");
-    return { parsed, usage };
-  } catch (err) {
-    deps.logger.warn({ provider: deps.primary.name, err }, "appointment llm primary failed; using fallback");
-    logEvent("appt.llm.error", { provider: deps.primary.name, model: deps.primary.model, fallback: true, error: err instanceof Error ? err.message : String(err) }, ids);
-    logEvent("appt.llm.request", { provider: deps.fallback.name, model: deps.fallback.model, classify, fallback: true, prompt }, ids);
-    const { text, usage } = await withTimeout(deps.fallback.generate(parts, fields, classify), LLM_TIMEOUT_MS, deps.fallback.name);
-    logEvent("appt.llm.response", { provider: deps.fallback.name, model: deps.fallback.model, classify, fallback: true, response: text, usage }, ids);
-    const parsed = JSON.parse(text) as Record<string, unknown>;
-    deps.logger.info({ provider: deps.fallback.name, model: deps.fallback.model }, "appointment extraction (fallback)");
-    return { parsed, usage };
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= LLM_MAX_ATTEMPTS; attempt++) {
+    try {
+      return await runApptProvider(deps, deps.primary, parts, fields, classify, prompt, ids, false);
+    } catch (errPrimary) {
+      deps.logger.warn({ provider: deps.primary.name, err: errPrimary }, "appointment llm primary failed; using fallback");
+      logEvent("appt.llm.error", { provider: deps.primary.name, model: deps.primary.model, attempt, error: errMessage(errPrimary) }, ids);
+      try {
+        return await runApptProvider(deps, deps.fallback, parts, fields, classify, prompt, ids, true);
+      } catch (errFallback) {
+        lastErr = errFallback;
+        deps.logger.warn({ provider: deps.fallback.name, err: errFallback, attempt }, "appointment llm fallback failed");
+        logEvent("appt.llm.error", { provider: deps.fallback.name, model: deps.fallback.model, attempt, fallback: true, error: errMessage(errFallback) }, ids);
+        if (attempt < LLM_MAX_ATTEMPTS) await sleep(LLM_RETRY_BASE_MS * 2 ** (attempt - 1));
+      }
+    }
   }
+  throw lastErr;
 }
 
 export function buildAppointmentParts(body: string, today: string): ContentPart[] {
