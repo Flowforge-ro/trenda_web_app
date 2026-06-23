@@ -15,7 +15,7 @@ import {
   type AppointmentField,
 } from "../../lib/appointment-extraction.js";
 import { renderMissingFields } from "../../lib/template.js";
-import { logError } from "../../lib/db-log.js";
+import { logError, logEvent } from "../../lib/db-log.js";
 import { logger } from "../../lib/logger.js";
 import { recordUsage, recordLlmUsage } from "../../lib/usage.js";
 
@@ -147,14 +147,16 @@ async function processMessage(
       },
       "llm-send: appointment classify"
     );
-    const result = await deps.extractAppointment(message.body.content, fields, today, { classify: true });
+    const ids = { correlationId: message.conversationId, orgId: mailbox.orgId };
+    const result = await deps.extractAppointment(message.body.content, fields, today, { classify: true, ...ids });
     await recordLlmUsage(mailbox.orgId, result.usage, deps.recordUsage);
     // Classification outcome: appointment vs junk (other).
     await deps.recordUsage({ orgId: mailbox.orgId, kind: "classification", outcome: result.intent });
+    logEvent("appt.classify", { from, conversationId: message.conversationId, intent: result.intent, fields: result.fields }, ids);
     if (result.intent === "other") return; // ignored entirely (spec decision)
 
     const missing = missingRequired(fields, result.fields);
-    await deps.prisma.appointment.create({
+    const created = await deps.prisma.appointment.create({
       data: {
         orgId: mailbox.orgId,
         mailboxId: mailbox.id,
@@ -165,6 +167,7 @@ async function processMessage(
         lastMessageAt: receivedAt,
       },
     });
+    logEvent("db.write", { table: "appointment", op: "create", appointmentId: created.id, status: missing.length === 0 ? "complete" : "collecting", missing: missing.map((f) => f.key) }, ids);
     if (missing.length > 0) {
       await deps.replyToMessage(accessToken, message.id, deps.renderMissingFields(missing.map((f) => f.label)));
       await deps.recordUsage({ orgId: mailbox.orgId, kind: "email_write", emails: 1 });
@@ -187,11 +190,14 @@ async function processMessage(
     },
     "llm-send: appointment extract"
   );
-  const result = await deps.extractAppointment(message.body.content, fields, today, { classify: false });
+  const ids = { correlationId: message.conversationId, orgId: mailbox.orgId };
+  const result = await deps.extractAppointment(message.body.content, fields, today, { classify: false, ...ids });
   await recordLlmUsage(mailbox.orgId, result.usage, deps.recordUsage);
   const merged = mergeFields(existing.fields as Record<string, string | null>, result.fields);
   const missing = missingRequired(fields, merged);
   const wasComplete = existing.status === "complete";
+
+  logEvent("appt.extract", { from, conversationId: message.conversationId, extracted: result.fields, merged }, ids);
 
   await deps.prisma.appointment.update({
     where: { id: existing.id },
@@ -201,6 +207,7 @@ async function processMessage(
       lastMessageAt: receivedAt,
     },
   });
+  logEvent("db.write", { table: "appointment", op: "update", appointmentId: existing.id, status: missing.length === 0 ? "complete" : "collecting", missing: missing.map((f) => f.key) }, ids);
 
   // Never email a thread that has already completed (spec: corrections merge silently).
   if (missing.length > 0 && !wasComplete) {

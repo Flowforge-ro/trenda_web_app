@@ -1,6 +1,7 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import OpenAI from "openai";
 import { logger as defaultLogger } from "./logger.js";
+import { logEvent, type EventIds } from "./db-log.js";
 import { getOpenAI, type ContentPart, type ExtractionLogger } from "./extraction.js";
 import type { LlmUsage } from "./usage.js";
 
@@ -146,16 +147,22 @@ async function generateWithFallback(
   deps: AppointmentExtractionDeps,
   parts: ContentPart[],
   fields: AppointmentField[],
-  classify: boolean
+  classify: boolean,
+  ids: EventIds = {}
 ): Promise<{ parsed: Record<string, unknown>; usage: LlmUsage }> {
+  const prompt = parts.map((p) => ("text" in p ? p.text : `<binary ${p.inlineData.mimeType}>`)).join("\n");
   try {
+    logEvent("appt.llm.request", { provider: deps.primary.name, model: deps.primary.model, classify, prompt }, ids);
     const { text, usage } = await deps.primary.generate(parts, fields, classify);
+    logEvent("appt.llm.response", { provider: deps.primary.name, model: deps.primary.model, classify, response: text, usage }, ids);
     const parsed = JSON.parse(text) as Record<string, unknown>;
     deps.logger.info({ provider: deps.primary.name, model: deps.primary.model }, "appointment extraction");
     return { parsed, usage };
   } catch (err) {
     deps.logger.warn({ provider: deps.primary.name, err }, "appointment llm primary failed; using fallback");
+    logEvent("appt.llm.request", { provider: deps.fallback.name, model: deps.fallback.model, classify, fallback: true, prompt }, ids);
     const { text, usage } = await deps.fallback.generate(parts, fields, classify);
+    logEvent("appt.llm.response", { provider: deps.fallback.name, model: deps.fallback.model, classify, fallback: true, response: text, usage }, ids);
     const parsed = JSON.parse(text) as Record<string, unknown>;
     deps.logger.info({ provider: deps.fallback.name, model: deps.fallback.model }, "appointment extraction (fallback)");
     return { parsed, usage };
@@ -181,14 +188,15 @@ export async function extractAppointment(
   body: string,
   fields: AppointmentField[],
   today: string,
-  opts: { classify: boolean },
+  opts: { classify: boolean; correlationId?: string | null; orgId?: string | null },
   deps: AppointmentExtractionDeps = defaultDeps
 ): Promise<AppointmentExtraction> {
   const { parsed, usage } = await generateWithFallback(
     deps,
     buildAppointmentParts(body, today),
     fields,
-    opts.classify
+    opts.classify,
+    { correlationId: opts.correlationId, orgId: opts.orgId }
   );
 
   const intent: AppointmentExtraction["intent"] =

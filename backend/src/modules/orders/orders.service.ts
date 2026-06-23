@@ -4,7 +4,7 @@ import { decrypt, encrypt } from "../../lib/crypto.js";
 import { getAccessTokenFromRefreshToken, createAndSendMail } from "../../lib/microsoft.js";
 import { renderStatusRequest, renderOfferAcceptance } from "../../lib/template.js";
 import { getMailboxAccessToken } from "../../lib/mailbox-token.js";
-import { logError } from "../../lib/db-log.js";
+import { logError, logEvent } from "../../lib/db-log.js";
 import { recordUsage } from "../../lib/usage.js";
 import { resolveRelativeDelivery } from "../../lib/extraction.js";
 import type { Order } from "../../generated/prisma/client.js";
@@ -69,6 +69,7 @@ export async function createOrder(
       emailStatus: "in_curs",
     },
   });
+  logEvent("db.write", { table: "order", op: "create", orderId: order.id, vendorEmail: order.vendorEmail, chassisSeries: order.chassisSeries, partCode: order.partCode }, { correlationId: order.id, orgId });
   return sendOrderEmail(order, deps);
 }
 
@@ -97,6 +98,7 @@ async function sendOrderEmail(
       where: { id: order.id },
       data: { internetMessageId, emailStatus: "trimis" },
     });
+    logEvent("db.write", { table: "order", op: "update", orderId: order.id, emailStatus: "trimis", internetMessageId }, { correlationId: order.id, orgId: order.orgId });
     return { order: updated, emailSent: true };
   } catch (err) {
     logError("Order email failed", err, { orderId: order.id });
@@ -104,6 +106,7 @@ async function sendOrderEmail(
       where: { id: order.id },
       data: { emailStatus: "esuat" },
     });
+    logEvent("db.write", { table: "order", op: "update", orderId: order.id, emailStatus: "esuat" }, { correlationId: order.id, orgId: order.orgId });
     return { order: updated, emailSent: false };
   }
 }

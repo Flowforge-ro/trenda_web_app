@@ -338,4 +338,5 @@ export async function replyToMessage(
   if (!res.ok) {
     throw new Error(`Graph reply failed: ${res.status} ${await res.text()}`);
   }
+  logEvent("mail.reply", { messageId, comment });
 }
