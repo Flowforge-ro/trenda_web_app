@@ -1,4 +1,4 @@
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { apiFetch } from "./http";
 
 export interface Appointment {
@@ -30,5 +30,32 @@ export function useAppointments() {
     queryFn: ({ pageParam }) => fetchAppointments(pageParam),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.nextCursor ?? undefined,
+  });
+}
+
+export interface ConversationMessage {
+  id: string;
+  fromEmail: string | null;
+  subject: string | null;
+  receivedDateTime: string;
+  body: string | null;
+}
+
+export interface AppointmentConversation {
+  customerEmail: string;
+  messages: ConversationMessage[];
+}
+
+async function fetchConversation(id: string): Promise<AppointmentConversation> {
+  const res = await apiFetch(`/appointments/${id}/conversation`);
+  if (!res.ok) throw new Error("Încărcarea conversației a eșuat");
+  return res.json();
+}
+
+export function useAppointmentConversation(id: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ["appointment-conversation", id],
+    queryFn: () => fetchConversation(id),
+    enabled,
   });
 }

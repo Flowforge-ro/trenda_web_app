@@ -6,6 +6,7 @@ import {
   replaceFieldConfig,
   fieldConfigSchema,
   listAppointmentsQuerySchema,
+  getAppointmentConversation,
 } from "./appointments.service.js";
 
 export const appointmentsRoutes: FastifyPluginAsync = async (app) => {
@@ -17,6 +18,15 @@ export const appointmentsRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(400).send({ error: "Invalid query", details: parsed.error.flatten() });
     }
     return listAppointments(user.orgId, parsed.data);
+  });
+
+  app.get("/appointments/:id/conversation", async (request, reply) => {
+    const user = await requireRole("member", request, reply);
+    if (!user) return reply;
+    const { id } = request.params as { id: string };
+    const result = await getAppointmentConversation(user.orgId, id);
+    if (!result) return reply.status(404).send({ error: "Conversation not found" });
+    return result;
   });
 
   app.get("/appointment-fields", async (request, reply) => {

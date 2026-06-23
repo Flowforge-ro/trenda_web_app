@@ -5,6 +5,7 @@ import {
   listFieldConfig,
   replaceFieldConfig,
   fieldConfigSchema,
+  getAppointmentConversation,
 } from "./appointments.service.js";
 
 const CONFIG = [
@@ -58,6 +59,81 @@ test("replaceFieldConfig deletes then recreates rows in a transaction", async ()
   };
   await replaceFieldConfig("org1", [{ key: "nume", label: "Nume", description: "d", required: true, sortOrder: 0 }], { prisma: fake as never });
   assert.deepEqual(calls, ["del:org1", "create:1", "tx"]);
+});
+
+function conversationDeps(overrides: Record<string, unknown> = {}) {
+  return {
+    prisma: {
+      appointment: {
+        findFirst: async () => ({
+          customerEmail: "client@y.ro",
+          mailboxId: "mb1",
+          conversationId: "conv-1",
+        }),
+      },
+      mailbox: { findUnique: async () => ({ encryptedRefreshToken: "enc" }) },
+    },
+    decrypt: (s: string) => s,
+    encrypt: (s: string) => s,
+    getAccessTokenFromRefreshToken: async () => ({ accessToken: "tok", refreshToken: null }),
+    listMessagesInConversation: async () => [
+      {
+        id: "m1",
+        from: { emailAddress: { address: "client@y.ro" } },
+        subject: "Programare",
+        receivedDateTime: "2026-06-12T10:00:00Z",
+        body: { contentType: "text", content: "Bună ziua" },
+      },
+    ],
+    ...overrides,
+  } as never;
+}
+
+test("getAppointmentConversation maps Graph messages and scopes by org", async () => {
+  let where: any;
+  const deps = conversationDeps({
+    prisma: {
+      appointment: {
+        findFirst: async (a: any) => {
+          where = a.where;
+          return { customerEmail: "client@y.ro", mailboxId: "mb1", conversationId: "conv-1" };
+        },
+      },
+      mailbox: { findUnique: async () => ({ encryptedRefreshToken: "enc" }) },
+    },
+  });
+  const result = await getAppointmentConversation("org1", "appt1", deps);
+  assert.equal(where.id, "appt1");
+  assert.equal(where.orgId, "org1");
+  assert.equal(result?.customerEmail, "client@y.ro");
+  assert.deepEqual(result?.messages, [
+    {
+      id: "m1",
+      fromEmail: "client@y.ro",
+      subject: "Programare",
+      receivedDateTime: "2026-06-12T10:00:00Z",
+      body: "Bună ziua",
+    },
+  ]);
+});
+
+test("getAppointmentConversation returns null when appointment is missing", async () => {
+  const deps = conversationDeps({
+    prisma: { appointment: { findFirst: async () => null }, mailbox: { findUnique: async () => null } },
+  });
+  assert.equal(await getAppointmentConversation("org1", "nope", deps), null);
+});
+
+test("getAppointmentConversation returns null when the mailbox has no token", async () => {
+  const deps = conversationDeps({
+    prisma: {
+      appointment: {
+        findFirst: async () => ({ customerEmail: "c@y.ro", mailboxId: "mb1", conversationId: "c1" }),
+      },
+      mailbox: { findUnique: async () => ({ encryptedRefreshToken: null }) },
+    },
+  });
+  assert.equal(await getAppointmentConversation("org1", "appt1", deps), null);
 });
 
 test("listFieldConfig scopes by org and orders by sortOrder", async () => {

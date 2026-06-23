@@ -9,6 +9,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useAppointments, type Appointment } from "@/lib/appointments";
+import { ConversationDialog } from "@/components/appointments/conversation-dialog";
 
 function StatusBadge({ status }: { status: Appointment["status"] }) {
   return (
@@ -56,15 +57,16 @@ export function AppointmentsPage() {
               <TableHead className="px-4 text-muted-foreground">Date completate</TableHead>
               <TableHead className="px-4 text-muted-foreground">Lipsesc</TableHead>
               <TableHead className="px-4 text-muted-foreground">Ultimul mesaj</TableHead>
+              <TableHead className="px-4 text-muted-foreground" />
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableRow><TableCell colSpan={5} className="px-4 py-6 text-center text-muted-foreground">Se încarcă...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={6} className="px-4 py-6 text-center text-muted-foreground">Se încarcă...</TableCell></TableRow>
             ) : isError ? (
-              <TableRow><TableCell colSpan={5} className="px-4 py-6 text-center text-error">Nu s-au putut încărca programările.</TableCell></TableRow>
+              <TableRow><TableCell colSpan={6} className="px-4 py-6 text-center text-error">Nu s-au putut încărca programările.</TableCell></TableRow>
             ) : appointments.length === 0 ? (
-              <TableRow><TableCell colSpan={5} className="px-4 py-6 text-center text-muted-foreground">Nicio programare.</TableCell></TableRow>
+              <TableRow><TableCell colSpan={6} className="px-4 py-6 text-center text-muted-foreground">Nicio programare.</TableCell></TableRow>
             ) : (
               appointments.map((a) => (
                 <TableRow key={a.id} className="hover:bg-gray-100">
@@ -76,6 +78,9 @@ export function AppointmentsPage() {
                   </TableCell>
                   <TableCell className="px-4 py-3 whitespace-nowrap text-muted-foreground">
                     {new Date(a.lastMessageAt).toLocaleString("ro-RO")}
+                  </TableCell>
+                  <TableCell className="px-4 py-3 text-right">
+                    <ConversationDialog appointment={a} />
                   </TableCell>
                 </TableRow>
               ))

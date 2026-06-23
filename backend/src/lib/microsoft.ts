@@ -172,6 +172,45 @@ export async function listMessagesSince(
   return messages;
 }
 
+/**
+ * Fetch every message in a single conversation (both received and sent), sorted
+ * oldest-first. On-demand, single-conversation read — unlike the polling path it
+ * spans all folders so the thread shows our own replies too. Filtering by
+ * conversationId and sorting in JS sidesteps Graph's $orderby+$filter quirks.
+ */
+export async function listMessagesInConversation(
+  accessToken: string,
+  conversationId: string
+): Promise<GraphMessage[]> {
+  const select =
+    "id,internetMessageId,from,subject,receivedDateTime,hasAttachments,bodyPreview,body,conversationId";
+  const filter = `conversationId eq '${conversationId.replace(/'/g, "''")}'`;
+  const query =
+    `$filter=${encodeURIComponent(filter)}` +
+    `&$select=${encodeURIComponent(select)}` +
+    `&$top=50`;
+
+  const MAX_PAGES = 5;
+  const messages: GraphMessage[] = [];
+  let url: string | undefined = `https://graph.microsoft.com/v1.0/me/messages?${query}`;
+  for (let page = 0; page < MAX_PAGES && url; page++) {
+    const res: Response = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Prefer: 'outlook.body-content-type="text"',
+      },
+    });
+    if (!res.ok) {
+      throw new Error(`Graph list conversation failed: ${res.status} ${await res.text()}`);
+    }
+    const parsed = graphMessagesResponseSchema.parse(await res.json());
+    messages.push(...parsed.value);
+    url = parsed["@odata.nextLink"];
+  }
+  messages.sort((a, b) => a.receivedDateTime.localeCompare(b.receivedDateTime));
+  return messages;
+}
+
 const graphAttachmentSchema = z.object({
   name: z.string().nullable().optional(),
   contentType: z.string().nullable().optional(),

@@ -1,5 +1,8 @@
 import { z } from "zod";
 import { prisma } from "../../prisma.js";
+import { decrypt, encrypt } from "../../lib/crypto.js";
+import { getAccessTokenFromRefreshToken, listMessagesInConversation } from "../../lib/microsoft.js";
+import { getMailboxAccessToken } from "../../lib/mailbox-token.js";
 
 export interface ServiceDeps { prisma: typeof prisma; }
 const defaultDeps: ServiceDeps = { prisma };
@@ -70,4 +73,53 @@ export async function listAppointments(
     };
   });
   return { appointments, nextCursor: rows.length > query.limit ? page[page.length - 1].id : null };
+}
+
+// ---- Customer conversation (real email thread, fetched live from Graph) ----
+
+export interface ConversationDeps {
+  prisma: typeof prisma;
+  decrypt: typeof decrypt;
+  encrypt: typeof encrypt;
+  getAccessTokenFromRefreshToken: typeof getAccessTokenFromRefreshToken;
+  listMessagesInConversation: typeof listMessagesInConversation;
+}
+const defaultConversationDeps: ConversationDeps = {
+  prisma,
+  decrypt,
+  encrypt,
+  getAccessTokenFromRefreshToken,
+  listMessagesInConversation,
+};
+
+export interface ConversationMessage {
+  id: string;
+  fromEmail: string | null;
+  subject: string | null;
+  receivedDateTime: string;
+  body: string | null;
+}
+
+export async function getAppointmentConversation(
+  orgId: string,
+  appointmentId: string,
+  deps: ConversationDeps = defaultConversationDeps
+): Promise<{ customerEmail: string; messages: ConversationMessage[] } | null> {
+  const appt = await deps.prisma.appointment.findFirst({
+    where: { id: appointmentId, orgId },
+    select: { customerEmail: true, mailboxId: true, conversationId: true },
+  });
+  if (!appt) return null;
+  const token = await getMailboxAccessToken(deps, appt.mailboxId);
+  if (!token) return null;
+
+  const raw = await deps.listMessagesInConversation(token, appt.conversationId);
+  const messages: ConversationMessage[] = raw.map((m) => ({
+    id: m.id,
+    fromEmail: m.from?.emailAddress.address ?? null,
+    subject: m.subject ?? null,
+    receivedDateTime: m.receivedDateTime,
+    body: m.body?.content ?? m.bodyPreview ?? null,
+  }));
+  return { customerEmail: appt.customerEmail, messages };
 }
