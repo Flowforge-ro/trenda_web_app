@@ -41,6 +41,16 @@ export function OfferDialog({ order }: { order: Order }) {
           <p className="text-sm text-error">Nu s-a putut încărca oferta.</p>
         ) : (
           <>
+            {data.reasons.length > 0 ? (
+              <div className="mb-3 rounded-md border border-warning/30 bg-warning/10 p-3 text-xs text-warning">
+                <p className="font-medium">De verificat:</p>
+                <ul className="mt-1 list-disc pl-4">
+                  {data.reasons.map((r) => (
+                    <li key={r}>{r}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
             <OfferReplyView orderId={order.id} data={data} />
             {order.offerPrice ? (
               <p className="text-sm font-medium text-foreground">Preț: {order.offerPrice}</p>
