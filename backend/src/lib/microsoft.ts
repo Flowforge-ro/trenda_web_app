@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { logEvent } from "./db-log.js";
 
 const graphUserSchema = z.object({
   id: z.string(),
@@ -104,6 +105,13 @@ export async function createAndSendMail(
     }).catch(() => {});
     throw new Error(`Graph send failed: ${detail}`);
   }
+
+  logEvent("mail.send", {
+    to: mail.to,
+    subject: mail.subject,
+    body: mail.body,
+    internetMessageId: draft.internetMessageId,
+  });
 
   return { internetMessageId: draft.internetMessageId };
 }

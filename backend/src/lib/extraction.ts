@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { GoogleGenAI, Type } from "@google/genai";
 import OpenAI from "openai";
 import { logger as defaultLogger } from "./logger.js";
+import { logEvent } from "./db-log.js";
 import { renderTemplate } from "./template.js";
 import { quoteInBody } from "./confidence.js";
 import type { LlmUsage } from "./usage.js";
@@ -14,6 +15,10 @@ export type ExtractionSource =
 
 export interface ExtractionContext {
   partCode: string | null;
+  // Optional correlation for full-pipeline logging: ties llm.request/llm.response
+  // rows to the order/email they belong to. Absent in unit tests.
+  correlationId?: string | null;
+  orgId?: string | null;
 }
 
 // Gemini content parts (the fallback provider's wire format).
@@ -234,14 +239,24 @@ async function generateWithFallback(
   today: string,
   ctx: ExtractionContext
 ): Promise<{ parsed: ParsedFields; usage: LlmUsage }> {
+  const ids = { correlationId: ctx.correlationId, orgId: ctx.orgId };
+  const sourceMeta =
+    source.kind === "text"
+      ? { kind: "text" as const, bodyChars: source.body.length }
+      : { kind: "binary" as const, mimeType: source.mimeType, byteSize: source.bytes.byteLength };
+
   try {
+    logEvent("llm.request", { provider: deps.primary.name, model: deps.primary.model, source: sourceMeta, prompt: promptText(source, today, ctx) }, ids);
     const { text, usage } = await deps.primary.generate(source, today, ctx);
+    logEvent("llm.response", { provider: deps.primary.name, model: deps.primary.model, response: text, usage }, ids);
     const parsed = JSON.parse(text) as ParsedFields;
     deps.logger.info({ provider: deps.primary.name, model: deps.primary.model }, "llm extraction");
     return { parsed, usage };
   } catch (err) {
     deps.logger.warn({ provider: deps.primary.name, err }, "llm primary failed; using fallback");
+    logEvent("llm.request", { provider: deps.fallback.name, model: deps.fallback.model, fallback: true, source: sourceMeta, prompt: promptText(source, today, ctx) }, ids);
     const { text, usage } = await deps.fallback.generate(source, today, ctx);
+    logEvent("llm.response", { provider: deps.fallback.name, model: deps.fallback.model, fallback: true, response: text, usage }, ids);
     const parsed = JSON.parse(text) as ParsedFields;
     deps.logger.info({ provider: deps.fallback.name, model: deps.fallback.model }, "llm extraction (fallback)");
     return { parsed, usage };

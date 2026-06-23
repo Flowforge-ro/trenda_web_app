@@ -6,7 +6,7 @@ import { recordUsage } from "../../lib/usage.js";
 import { getMailboxAccessToken } from "../../lib/mailbox-token.js";
 import { fetchMailboxMessages, markSeen } from "../../lib/mail-poll.js";
 import { matchReply, normalizeMessageId } from "./matching.js";
-import { logError } from "../../lib/db-log.js";
+import { logError, logEvent } from "../../lib/db-log.js";
 import { extractPending } from "./extraction-worker.js";
 import { requestStatusUpdates } from "./status-request.js";
 import type { PollDeps, GetToken } from "./poll.types.js";
@@ -125,6 +125,15 @@ async function pollMailbox(mailboxId: string, orders: MatchableOrder[], deps: Po
       }),
       deps.prisma.order.update({ where: { id: order.id }, data: { replyStatus: "reply_received" } }),
     ]);
+
+    logEvent("mail.reply-stored", {
+      orderId: order.id,
+      graphMessageId: message.id,
+      from: message.from?.emailAddress.address ?? null,
+      subject: message.subject ?? null,
+      hasAttachments: message.hasAttachments ?? false,
+      body: message.body?.content ?? null,
+    }, { correlationId: order.id, orgId: mailbox?.orgId ?? null });
   }
 
   await markSeen(deps, mailboxId, handled);

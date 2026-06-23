@@ -2,7 +2,7 @@ import { pollReplies } from "./poll.service.js";
 import { pollClientMailboxes } from "../appointments/appointments.ingest.js";
 import { logError, pruneLogs } from "../../lib/db-log.js";
 
-const DEFAULT_POLL_INTERVAL_MS = 5 * 60 * 1000;
+const DEFAULT_POLL_INTERVAL_MS = 1 * 60 * 1000;
 
 export function pollIntervalMs(env: Record<string, string | undefined> = process.env): number {
   const parsed = Number(env.POLL_INTERVAL_MS);

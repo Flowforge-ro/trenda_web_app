@@ -1,7 +1,7 @@
 import { mergeMissing, type ExtractionResult } from "../../lib/extraction.js";
 import { scoreConfidence, needsReview } from "../../lib/confidence.js";
 import { recordLlmUsage } from "../../lib/usage.js";
-import { logError } from "../../lib/db-log.js";
+import { logError, logEvent } from "../../lib/db-log.js";
 import { logger } from "../../lib/logger.js";
 import type { Order } from "../../generated/prisma/client.js";
 import type { PollDeps, GetToken } from "./poll.types.js";
@@ -57,9 +57,11 @@ async function extractForOrder(order: PendingOrder, getToken: GetToken, deps: Po
       "llm-send: order extract"
     );
   }
+  const llmCtx = { partCode: order.partCode, correlationId: order.id, orgId: order.orgId };
   let result: ExtractionResult = reply?.body
-    ? await deps.extractOrderInfo({ kind: "text", body: reply.body }, today, { partCode: order.partCode })
+    ? await deps.extractOrderInfo({ kind: "text", body: reply.body }, today, llmCtx)
     : { orderNumber: null, deliveryTime: null, deliveryEarliest: null, deliveryLatest: null, orderNumberGrounded: true, deliveryGrounded: true, status: "needs_review", isOffer: false, price: null, partCodeMismatch: false };
+
   await recordLlmUsage(order.orgId, result.usage, deps.recordUsage);
 
   // The token is only needed for attachment fallback; fetch it lazily so a
@@ -81,7 +83,8 @@ async function extractForOrder(order: PendingOrder, getToken: GetToken, deps: Po
       .filter((x) => x.mime !== null)
       .sort((x, y) => Number(y.mime === "application/pdf") - Number(x.mime === "application/pdf"));
     for (const { a, mime } of sources) {
-      const attResult = await deps.extractOrderInfo({ kind: "binary", bytes: a.bytes, mimeType: mime! }, today, { partCode: order.partCode });
+      logEvent("extract.attachment", { name: a.name, mimeType: mime, byteSize: a.bytes.byteLength }, { correlationId: order.id, orgId: order.orgId });
+      const attResult = await deps.extractOrderInfo({ kind: "binary", bytes: a.bytes, mimeType: mime! }, today, llmCtx);
       await recordLlmUsage(order.orgId, attResult.usage, deps.recordUsage);
       result = mergeMissing(result, attResult);
       if (result.status === "extracted") break;
@@ -121,6 +124,27 @@ async function extractForOrder(order: PendingOrder, getToken: GetToken, deps: Po
     reviewReasons: confidence.reasons.length ? confidence.reasons.join("\n") : null,
   };
 
+  const ids = { correlationId: order.id, orgId: order.orgId };
+  logEvent("extract.result", {
+    orderId: order.id,
+    orderNumber: result.orderNumber,
+    deliveryTime: result.deliveryTime,
+    deliveryEarliest: result.deliveryEarliest,
+    deliveryLatest: result.deliveryLatest,
+    isOffer: result.isOffer,
+    price: result.price,
+    partCodeMismatch: result.partCodeMismatch,
+    status: result.status,
+    confidence,
+    dateChanged,
+  }, ids);
+
+  const newReplyStatus = result.isOffer
+    ? "offer_pending"
+    : needsReview(confidence)
+      ? "needs_review"
+      : "extracted";
+
   await deps.prisma.order.update({
     where: { id: order.id },
     data: result.isOffer
@@ -131,4 +155,6 @@ async function extractForOrder(order: PendingOrder, getToken: GetToken, deps: Po
           ...(dateChanged ? { statusRequestSentAt: null } : {}),
         },
   });
+
+  logEvent("db.write", { table: "order", op: "update", orderId: order.id, replyStatus: newReplyStatus, offerPrice: result.isOffer ? result.price : undefined }, ids);
 }
