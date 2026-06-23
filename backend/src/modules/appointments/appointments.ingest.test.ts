@@ -168,13 +168,50 @@ test("reply still missing fields → update collecting + reply listing only stil
   assert.doesNotMatch(state.replies[0].body, /- Telefon/);
 });
 
-test("reply to a complete thread (correction) → merge, never email", async () => {
+test("email to a complete appointment (correction) → merge, mark updated, never email", async () => {
   const state = newState();
   const existing = { id: "ap1", status: "complete", fields: { nume: "Ion", telefon: "0712", dataDorita: "2026-06-20" }, lastMessageAt: new Date("2026-06-11T08:00:00Z") };
   await pollClientMailboxes(makeDeps({ state, existing, extractResult: () => ({ intent: "appointment", fields: { nume: "Ionel", telefon: null, dataDorita: null } }) }));
   assert.equal(state.updates.length, 1);
   assert.equal(state.updates[0].fields.nume, "Ionel");
+  assert.equal(state.updates[0].status, "updated");
   assert.equal(state.replies.length, 0);
+});
+
+test("two fresh threads from same sender in one poll → one appointment, one classify", async () => {
+  const state = newState();
+  const messages = [
+    msg({ id: "m1", conversationId: "c1", receivedDateTime: "2026-06-12T09:00:00Z" }),
+    msg({ id: "m2", conversationId: "c2", receivedDateTime: "2026-06-12T09:05:00Z" }),
+  ];
+  await pollClientMailboxes(makeDeps({ state, messages }));
+  assert.equal(state.creates.length, 1); // sender-matched, not one-per-thread
+  assert.equal(state.extractCalls.filter((c) => c.classify).length, 1); // classify only until matched
+});
+
+test("several messages in one poll, still incomplete → exactly one consolidated reply", async () => {
+  const state = newState();
+  let n = 0;
+  const messages = [
+    msg({ id: "m1", conversationId: "c1", receivedDateTime: "2026-06-12T09:00:00Z" }),
+    msg({ id: "m2", conversationId: "c2", receivedDateTime: "2026-06-12T09:05:00Z" }),
+  ];
+  await pollClientMailboxes(makeDeps({
+    state,
+    messages,
+    extractResult: (): AppointmentExtraction => (n++ === 0 ? { intent: "appointment", fields: { nume: "Ion" } } : { intent: "appointment", fields: { telefon: "0712" } }),
+  }));
+  assert.equal(state.creates.length, 1);
+  assert.equal(state.replies.length, 1); // not one per message
+  assert.match(state.replies[0].body, /- Data dorită/);
+  assert.doesNotMatch(state.replies[0].body, /- Telefon/);
+});
+
+test("junk reply on a collecting appointment → merge nothing, no re-nag", async () => {
+  const state = newState();
+  const existing = { id: "ap1", status: "collecting", fields: { nume: "Ion" }, lastMessageAt: new Date("2026-06-11T08:00:00Z") };
+  await pollClientMailboxes(makeDeps({ state, existing, extractResult: () => ({ intent: "appointment", fields: { nume: null, telefon: null, dataDorita: null } }) }));
+  assert.equal(state.replies.length, 0); // nothing newly filled → don't re-ask
 });
 
 test("self-sent message skipped → no extract", async () => {

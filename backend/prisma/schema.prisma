@@ -192,13 +192,13 @@ model Appointment {
   mailboxId      String
   mailbox        Mailbox      @relation(fields: [mailboxId], references: [id])
   customerEmail  String
-  conversationId String
-  status         String       @default("collecting") // collecting | complete
+  conversationId String // latest thread seen from this customer (informational)
+  status         String       @default("collecting") // collecting | complete | updated
   fields         Json         @default("{}")
   lastMessageAt  DateTime
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
-  @@unique([mailboxId, conversationId])
+  @@unique([mailboxId, customerEmail])
   @@index([orgId, createdAt, id])
 }

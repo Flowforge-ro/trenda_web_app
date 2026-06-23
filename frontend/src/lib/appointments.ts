@@ -4,7 +4,7 @@ import { apiFetch } from "./http";
 export interface Appointment {
   id: string;
   customerEmail: string;
-  status: "collecting" | "complete";
+  status: "collecting" | "complete" | "updated";
   fields: Record<string, string | null>;
   filledFields: { label: string; value: string }[];
   missingLabels: string[];

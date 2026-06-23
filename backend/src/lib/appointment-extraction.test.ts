@@ -7,6 +7,7 @@ import {
   buildOpenAiResponseFormat,
   mergeFields,
   missingRequired,
+  nextStatus,
   type AppointmentField,
   type AppointmentLlmProvider,
   type AppointmentExtractionDeps,
@@ -106,4 +107,13 @@ test("mergeFields: extracted non-null overwrites; null keeps stored", () => {
 test("missingRequired lists required fields without values", () => {
   const missing = missingRequired(FIELDS, { nume: "Ion", telefon: null, dataDorita: null });
   assert.deepEqual(missing.map((f) => f.key), ["telefon", "dataDorita"]);
+});
+
+test("nextStatus: still-missing → collecting; newly-complete → complete; post-complete → updated", () => {
+  assert.equal(nextStatus("collecting", 2), "collecting");
+  assert.equal(nextStatus("collecting", 0), "complete");
+  assert.equal(nextStatus("complete", 0), "updated");
+  assert.equal(nextStatus("updated", 0), "updated");
+  // A post-complete message that somehow leaves it missing falls back to collecting.
+  assert.equal(nextStatus("complete", 1), "collecting");
 });

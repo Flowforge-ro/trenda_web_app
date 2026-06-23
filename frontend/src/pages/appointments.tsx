@@ -10,21 +10,28 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useAppointments, type Appointment } from "@/lib/appointments";
 
+const STATUS_META: Record<Appointment["status"], { label: string; className: string }> = {
+  complete: { label: "Completă", className: "bg-success/10 text-success" },
+  updated: { label: "Actualizată", className: "bg-primary/10 text-primary" },
+  collecting: { label: "Colectare date", className: "bg-warning/10 text-warning" },
+};
+
 function StatusBadge({ status }: { status: Appointment["status"] }) {
+  const meta = STATUS_META[status] ?? STATUS_META.collecting;
   return (
     <span
       className={cn(
         "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium",
-        status === "complete" ? "bg-success/10 text-success" : "bg-warning/10 text-warning"
+        meta.className
       )}
     >
-      {status === "complete" ? "Completă" : "Colectare date"}
+      {meta.label}
     </span>
   );
 }
 
 function FilledFields({ fields }: { fields: Appointment["filledFields"] }) {
-  if (fields.length === 0) return <span className="text-muted-foreground">—</span>;
+  if (!fields || fields.length === 0) return <span className="text-muted-foreground">—</span>;
   return (
     <div className="space-y-0.5">
       {fields.map((f) => (

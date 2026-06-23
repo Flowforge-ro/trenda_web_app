@@ -220,3 +220,16 @@ export function missingRequired(
 ): AppointmentField[] {
   return fields.filter((f) => f.required && !values[f.key]);
 }
+
+export type AppointmentStatus = "collecting" | "complete" | "updated";
+
+/**
+ * Status after merging a message. Still-missing required fields → "collecting".
+ * Newly-complete → "complete". A further message on an already-complete (or
+ * updated) appointment keeps it complete but flags "updated" for staff visibility
+ * (mergeFields only ever adds info, so a complete appointment can't regress).
+ */
+export function nextStatus(prev: AppointmentStatus, missingCount: number): AppointmentStatus {
+  if (missingCount > 0) return "collecting";
+  return prev === "complete" || prev === "updated" ? "updated" : "complete";
+}
