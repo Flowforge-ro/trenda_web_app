@@ -10,6 +10,7 @@ import { useAuth, useChangePassword } from "@/lib/auth";
 import { useMailboxes, useDisconnectMailbox, connectMailboxUrl, type MailboxType } from "@/lib/mailboxes";
 import { useUsers, useCreateUser, useResetUserPassword, type OrgUser } from "@/lib/users";
 import { logAction } from "@/lib/logger";
+import { AppointmentFieldsSection } from "@/components/settings/appointment-fields-section";
 
 function MailboxesSection({ isAdmin }: { isAdmin: boolean }) {
   const { data: mailboxes = [], isLoading } = useMailboxes();
@@ -246,6 +247,7 @@ export function SettingsPage() {
       </header>
       <MailboxesSection isAdmin={isAdmin} />
       {isAdmin && <UsersSection />}
+      {isAdmin && <AppointmentFieldsSection />}
       <ChangePasswordSection />
     </div>
   );
