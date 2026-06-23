@@ -52,6 +52,9 @@ export interface ExtractionResult {
   status: "extracted" | "needs_review";
   isOffer: boolean;
   price: string | null;
+  // True when a part code was requested but the line the model used carries a
+  // different one. Values are kept (still useful) but the order is flagged for review.
+  partCodeMismatch: boolean;
   // Token usage of the LLM call that produced this result (for metering).
   usage?: LlmUsage;
 }
@@ -334,22 +337,9 @@ export async function extractOrderInfo(
   const { parsed, usage } = await generateWithFallback(deps, source, today, ctx);
 
   // When a part code is requested, the model returns the code of the line it used.
-  // If it doesn't match (or the model found no matching line), the extracted
-  // values would be from the wrong line — discard them and force human review.
-  if (ctx.partCode && !partCodeMatches(ctx.partCode, parsed.partCode)) {
-    return {
-      orderNumber: null,
-      deliveryTime: null,
-      deliveryEarliest: null,
-      deliveryLatest: null,
-      orderNumberGrounded: true,
-      deliveryGrounded: true,
-      status: "needs_review",
-      isOffer: false,
-      price: null,
-      usage,
-    };
-  }
+  // A different code (or none) means the values may be from the wrong line — keep
+  // them but flag the order so the reviewer sees "Număr piesă diferit".
+  const partCodeMismatch = !!ctx.partCode && !partCodeMatches(ctx.partCode, parsed.partCode);
 
   const orderNumber = parsed.orderNumber || null;
 
@@ -389,7 +379,7 @@ export async function extractOrderInfo(
 
   const status: ExtractionResult["status"] =
     orderNumber && deliveryEarliest ? "extracted" : "needs_review";
-  return { orderNumber, deliveryTime, deliveryEarliest, deliveryLatest, orderNumberGrounded, deliveryGrounded, status, isOffer, price, usage };
+  return { orderNumber, deliveryTime, deliveryEarliest, deliveryLatest, orderNumberGrounded, deliveryGrounded, status, isOffer, price, partCodeMismatch, usage };
 }
 
 export function mergeMissing(
@@ -407,7 +397,8 @@ export function mergeMissing(
   }
   const isOffer = base.isOffer || extra.isOffer;
   const price = base.price ?? extra.price;
+  const partCodeMismatch = base.partCodeMismatch || extra.partCodeMismatch;
   const status: ExtractionResult["status"] =
     orderNumber && deliveryEarliest ? "extracted" : "needs_review";
-  return { orderNumber, deliveryTime, deliveryEarliest, deliveryLatest, orderNumberGrounded, deliveryGrounded, status, isOffer, price };
+  return { orderNumber, deliveryTime, deliveryEarliest, deliveryLatest, orderNumberGrounded, deliveryGrounded, status, isOffer, price, partCodeMismatch };
 }

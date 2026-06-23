@@ -41,7 +41,7 @@ function buildJson(o: {
 
 const D20 = new Date("2026-06-20T00:00:00.000Z");
 
-const grounded = { orderNumberGrounded: true, deliveryGrounded: true, isOffer: false, price: null as string | null };
+const grounded = { orderNumberGrounded: true, deliveryGrounded: true, isOffer: false, price: null as string | null, partCodeMismatch: false };
 
 const WED = new Date("2026-06-17T00:00:00.000Z"); // Wednesday
 const SAT = new Date("2026-06-20T00:00:00.000Z"); // Saturday
@@ -363,40 +363,38 @@ test("extractOrderInfo surfaces isOffer and price from the model", async () => {
   assert.equal(r.price, "120 RON");
 });
 
-test("partCode mismatch discards extracted values and forces review", async () => {
+test("partCode mismatch keeps extracted values but flags partCodeMismatch", async () => {
   const deps = fakeDeps(JSON.stringify({
     orderNumber: "CMD-1", deliveryEarliest: "2026-07-01", deliveryLatest: "2026-07-01",
     deliveryTime: "1 iulie", orderNumberQuote: "CMD-1", deliveryQuote: "1 iulie",
     isOffer: true, price: "120 RON", partCode: "OTHER-99",
   }));
   const r = await extractOrderInfo({ kind: "text", body: "CMD-1 1 iulie" }, "2026-06-17", { partCode: "ABC-123" }, deps);
-  assert.equal(r.orderNumber, null);
-  assert.equal(r.deliveryEarliest, null);
-  assert.equal(r.price, null);
-  assert.equal(r.isOffer, false);
-  assert.equal(r.status, "needs_review");
+  assert.equal(r.orderNumber, "CMD-1");
+  assert.equal(r.price, "120 RON");
+  assert.equal(r.partCodeMismatch, true);
 });
 
-test("partCode match (ignoring separators/case) keeps extracted values", async () => {
+test("partCode match (ignoring separators/case) does not flag a mismatch", async () => {
   const deps = fakeDeps(JSON.stringify({
     orderNumber: "CMD-1", deliveryEarliest: "2026-07-01", deliveryLatest: "2026-07-01",
     deliveryTime: "1 iulie", orderNumberQuote: "CMD-1", deliveryQuote: "1 iulie",
     isOffer: true, price: "120 RON", partCode: "abc 123",
   }));
   const r = await extractOrderInfo({ kind: "text", body: "CMD-1 1 iulie" }, "2026-06-17", { partCode: "ABC-123" }, deps);
-  assert.equal(r.orderNumber, "CMD-1");
+  assert.equal(r.partCodeMismatch, false);
   assert.equal(r.status, "extracted");
 });
 
-test("missing partCode in result forces review when one was requested", async () => {
+test("a null model partCode flags a mismatch when one was requested", async () => {
   const deps = fakeDeps(JSON.stringify({
     orderNumber: "CMD-1", deliveryEarliest: "2026-07-01", deliveryLatest: "2026-07-01",
     deliveryTime: "1 iulie", orderNumberQuote: "CMD-1", deliveryQuote: "1 iulie",
     isOffer: true, price: "120 RON", partCode: null,
   }));
   const r = await extractOrderInfo({ kind: "text", body: "CMD-1 1 iulie" }, "2026-06-17", { partCode: "ABC-123" }, deps);
-  assert.equal(r.status, "needs_review");
-  assert.equal(r.orderNumber, null);
+  assert.equal(r.partCodeMismatch, true);
+  assert.equal(r.orderNumber, "CMD-1");
 });
 
 test("normalizePrice maps lei/ron (any case) to RON, leaves other currencies", () => {
