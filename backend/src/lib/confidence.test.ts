@@ -16,9 +16,19 @@ function result(over: Partial<ExtractionResult> = {}): ExtractionResult {
     status: "extracted",
     isOffer: false,
     price: null,
+    partCodeMismatch: false,
     ...over,
   };
 }
+
+test("partCodeMismatch flags review with a Romanian reason, others stay high", () => {
+  const fc = scoreConfidence(result({ partCodeMismatch: true }), TODAY);
+  assert.equal(fc.partCode, "low");
+  assert.equal(fc.orderNumber, "high");
+  assert.equal(fc.delivery, "high");
+  assert.ok(fc.reasons.includes("Număr piesă diferit"));
+  assert.equal(needsReview(fc), true);
+});
 
 // --- quoteInBody ---
 
@@ -127,6 +137,7 @@ test("scoreConfidence: ungrounded delivery -> low", () => {
 });
 
 test("needsReview: true when any field is low", () => {
-  assert.equal(needsReview({ orderNumber: "high", delivery: "low", reasons: ["x"] }), true);
-  assert.equal(needsReview({ orderNumber: "high", delivery: "high", reasons: [] }), false);
+  assert.equal(needsReview({ orderNumber: "high", delivery: "low", partCode: "high", reasons: ["x"] }), true);
+  assert.equal(needsReview({ orderNumber: "high", delivery: "high", partCode: "high", reasons: [] }), false);
+  assert.equal(needsReview({ orderNumber: "high", delivery: "high", partCode: "low", reasons: ["x"] }), true);
 });

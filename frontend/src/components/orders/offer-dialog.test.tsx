@@ -84,6 +84,18 @@ describe("OfferDialog", () => {
     );
   });
 
+  it("shows review reasons (e.g. part code mismatch)", async () => {
+    const { user } = setup({
+      data: { ...REVIEW, reasons: ["Număr piesă diferit"] },
+      isLoading: false,
+      isError: false,
+    });
+    await openDialog(user);
+
+    expect(screen.getByText("De verificat:")).toBeInTheDocument();
+    expect(screen.getByText("Număr piesă diferit")).toBeInTheDocument();
+  });
+
   it("fires reject", async () => {
     const { user } = setup({ data: REVIEW, isLoading: false, isError: false });
     await openDialog(user);

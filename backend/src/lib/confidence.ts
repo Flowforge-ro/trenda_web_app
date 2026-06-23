@@ -5,6 +5,7 @@ export type ConfidenceLevel = "high" | "low";
 export interface FieldConfidence {
   orderNumber: ConfidenceLevel;
   delivery: ConfidenceLevel;
+  partCode: ConfidenceLevel;
   // Human-readable (Romanian) explanations, shown in the review dialog.
   reasons: string[];
 }
@@ -46,6 +47,12 @@ export function scoreConfidence(result: ExtractionResult, today: string): FieldC
   const reasons: string[] = [];
   let orderNumber: ConfidenceLevel = "high";
   let delivery: ConfidenceLevel = "high";
+  let partCode: ConfidenceLevel = "high";
+
+  if (result.partCodeMismatch) {
+    partCode = "low";
+    reasons.push("Număr piesă diferit");
+  }
 
   // --- orderNumber ---
   const on = result.orderNumber?.trim() ?? "";
@@ -83,9 +90,9 @@ export function scoreConfidence(result: ExtractionResult, today: string): FieldC
     }
   }
 
-  return { orderNumber, delivery, reasons };
+  return { orderNumber, delivery, partCode, reasons };
 }
 
 export function needsReview(fc: FieldConfidence): boolean {
-  return fc.orderNumber === "low" || fc.delivery === "low";
+  return fc.orderNumber === "low" || fc.delivery === "low" || fc.partCode === "low";
 }

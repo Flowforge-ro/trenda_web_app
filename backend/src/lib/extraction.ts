@@ -52,6 +52,9 @@ export interface ExtractionResult {
   status: "extracted" | "needs_review";
   isOffer: boolean;
   price: string | null;
+  // True when a part code was requested but the line the model used carries a
+  // different one. Values are kept (still useful) but the order is flagged for review.
+  partCodeMismatch: boolean;
   // Token usage of the LLM call that produced this result (for metering).
   usage?: LlmUsage;
 }
@@ -66,6 +69,9 @@ interface ParsedFields {
   deliveryQuote: string | null;
   isOffer: boolean;
   price: string | null;
+  // The part code of the line the model used for delivery/price, verbatim from
+  // the document. We compare it against the requested code to confirm the match.
+  partCode: string | null;
 }
 
 // ---- Prompts (loaded once from backend/prompts, outside dist/) ----
@@ -102,8 +108,9 @@ const OPENAI_RESPONSE_FORMAT = {
         deliveryQuote: { type: ["string", "null"] },
         isOffer: { type: "boolean" },
         price: { type: ["string", "null"] },
+        partCode: { type: ["string", "null"] },
       },
-      required: ["orderNumber", "deliveryTime", "deliveryEarliest", "deliveryLatest", "orderNumberQuote", "deliveryQuote", "isOffer", "price"],
+      required: ["orderNumber", "deliveryTime", "deliveryEarliest", "deliveryLatest", "orderNumberQuote", "deliveryQuote", "isOffer", "price", "partCode"],
     },
   },
 } as const;
@@ -194,6 +201,7 @@ const geminiProvider: LlmProvider = {
             deliveryQuote: { type: Type.STRING, nullable: true },
             isOffer: { type: Type.BOOLEAN, nullable: true },
             price: { type: Type.STRING, nullable: true },
+            partCode: { type: Type.STRING, nullable: true },
           },
         },
       },
@@ -247,6 +255,18 @@ async function generateWithFallback(
 export function normalizePrice(price: string | null): string | null {
   if (!price) return null;
   return price.replace(/(?<!\p{L})(lei|ron)(?!\p{L})/giu, "RON");
+}
+
+/**
+ * True when the model's matched part code equals the requested one, ignoring
+ * case and non-alphanumeric separators (spaces, dashes, dots) that vendors
+ * format inconsistently. A null/empty model code never matches.
+ */
+export function partCodeMatches(requested: string, found: string | null): boolean {
+  if (!found) return false;
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const r = norm(requested);
+  return r.length > 0 && r === norm(found);
 }
 
 function parseIsoDate(s: string): Date | null {
@@ -316,6 +336,11 @@ export async function extractOrderInfo(
 ): Promise<ExtractionResult> {
   const { parsed, usage } = await generateWithFallback(deps, source, today, ctx);
 
+  // When a part code is requested, the model returns the code of the line it used.
+  // A different code (or none) means the values may be from the wrong line — keep
+  // them but flag the order so the reviewer sees "Număr piesă diferit".
+  const partCodeMismatch = !!ctx.partCode && !partCodeMatches(ctx.partCode, parsed.partCode);
+
   const orderNumber = parsed.orderNumber || null;
 
   let deliveryTime: string | null = null;
@@ -354,7 +379,7 @@ export async function extractOrderInfo(
 
   const status: ExtractionResult["status"] =
     orderNumber && deliveryEarliest ? "extracted" : "needs_review";
-  return { orderNumber, deliveryTime, deliveryEarliest, deliveryLatest, orderNumberGrounded, deliveryGrounded, status, isOffer, price, usage };
+  return { orderNumber, deliveryTime, deliveryEarliest, deliveryLatest, orderNumberGrounded, deliveryGrounded, status, isOffer, price, partCodeMismatch, usage };
 }
 
 export function mergeMissing(
@@ -372,7 +397,8 @@ export function mergeMissing(
   }
   const isOffer = base.isOffer || extra.isOffer;
   const price = base.price ?? extra.price;
+  const partCodeMismatch = base.partCodeMismatch || extra.partCodeMismatch;
   const status: ExtractionResult["status"] =
     orderNumber && deliveryEarliest ? "extracted" : "needs_review";
-  return { orderNumber, deliveryTime, deliveryEarliest, deliveryLatest, orderNumberGrounded, deliveryGrounded, status, isOffer, price };
+  return { orderNumber, deliveryTime, deliveryEarliest, deliveryLatest, orderNumberGrounded, deliveryGrounded, status, isOffer, price, partCodeMismatch };
 }

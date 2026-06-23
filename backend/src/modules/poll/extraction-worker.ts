@@ -59,7 +59,7 @@ async function extractForOrder(order: PendingOrder, getToken: GetToken, deps: Po
   }
   let result: ExtractionResult = reply?.body
     ? await deps.extractOrderInfo({ kind: "text", body: reply.body }, today, { partCode: order.partCode })
-    : { orderNumber: null, deliveryTime: null, deliveryEarliest: null, deliveryLatest: null, orderNumberGrounded: true, deliveryGrounded: true, status: "needs_review", isOffer: false, price: null };
+    : { orderNumber: null, deliveryTime: null, deliveryEarliest: null, deliveryLatest: null, orderNumberGrounded: true, deliveryGrounded: true, status: "needs_review", isOffer: false, price: null, partCodeMismatch: false };
   await recordLlmUsage(order.orgId, result.usage, deps.recordUsage);
 
   // The token is only needed for attachment fallback; fetch it lazily so a
@@ -100,6 +100,7 @@ async function extractForOrder(order: PendingOrder, getToken: GetToken, deps: Po
     status: "needs_review",
     isOffer: false,
     price: null,
+    partCodeMismatch: false,
   });
 
   // A changed delivery date re-arms the one-time "Status?" nudge.
