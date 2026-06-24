@@ -19,7 +19,7 @@ function MailboxesSection({ isAdmin }: { isAdmin: boolean }) {
 
   return (
     <section className="space-y-3">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="text-lg font-semibold text-foreground">Cutii poștale</h2>
         {isAdmin && (
           <div className="flex items-center gap-2">
@@ -45,9 +45,9 @@ function MailboxesSection({ isAdmin }: { isAdmin: boolean }) {
       ) : (
         <ul className="divide-y rounded-lg border border-gray-200">
           {mailboxes.map((m) => (
-            <li key={m.id} className="flex items-center justify-between px-4 py-3">
-              <div>
-                <p className="text-sm font-medium text-foreground">{m.email}</p>
+            <li key={m.id} className="flex flex-col items-start gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-foreground break-all">{m.email}</p>
                 <span className="inline-flex rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
                   {m.type === "vendor_facing" ? "Furnizori" : "Clienți"}
                 </span>
@@ -170,7 +170,7 @@ function UsersSection() {
   const { data: users = [], isLoading } = useUsers(true);
   return (
     <section className="space-y-3">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="text-lg font-semibold text-foreground">Utilizatori</h2>
         <AddUserDialog />
       </div>
@@ -179,12 +179,12 @@ function UsersSection() {
       ) : (
         <ul className="divide-y rounded-lg border border-gray-200">
           {users.map((u) => (
-            <li key={u.id} className="flex items-center justify-between px-4 py-3">
-              <div>
-                <p className="text-sm font-medium text-foreground">{u.name ?? u.email}</p>
-                <p className="text-xs text-muted-foreground">{u.email}</p>
+            <li key={u.id} className="flex flex-col items-start gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-foreground break-all">{u.name ?? u.email}</p>
+                <p className="text-xs text-muted-foreground break-all">{u.email}</p>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex shrink-0 items-center gap-2">
                 <span className="inline-flex rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
                   {u.role === "admin" ? "Administrator" : "Membru"}
                 </span>
@@ -240,7 +240,7 @@ export function SettingsPage() {
   const { data: user } = useAuth();
   const isAdmin = user?.role === "admin";
   return (
-    <div className="space-y-8 p-8">
+    <div className="space-y-8 p-4 sm:p-8">
       <header>
         <h1 className="text-2xl font-semibold tracking-tight text-foreground">Setări</h1>
         <p className="mt-1 text-sm text-muted-foreground">Cutii poștale și utilizatori</p>

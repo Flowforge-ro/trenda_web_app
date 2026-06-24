@@ -69,7 +69,7 @@ export function AppointmentFieldsSection() {
 
   return (
     <section>
-      <div className="mb-3 flex items-center justify-between">
+      <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-lg font-medium text-foreground">Câmpuri programări</h2>
           <p className="text-sm text-muted-foreground">
@@ -81,7 +81,8 @@ export function AppointmentFieldsSection() {
         </Button>
       </div>
 
-      <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
+      {/* Desktop: dense table. Mobile: stacked cards (below) so inputs aren't clipped. */}
+      <div className="hidden overflow-hidden rounded-lg border border-gray-200 bg-white md:block">
         <Table>
           <TableHeader>
             <TableRow className="bg-gray-50 hover:bg-gray-50">
@@ -141,6 +142,58 @@ export function AppointmentFieldsSection() {
             )}
           </TableBody>
         </Table>
+      </div>
+
+      {/* Mobile: one card per field, inputs full width so the whole text shows. */}
+      <div className="space-y-3 md:hidden">
+        {isLoading ? (
+          <p className="text-sm text-muted-foreground">Se încarcă...</p>
+        ) : (
+          draft.map((f, i) => (
+            <div key={f.key || `new-${i}`} className="space-y-3 rounded-lg border border-gray-200 bg-white p-3">
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-muted-foreground" htmlFor={`label-${i}`}>Denumire</label>
+                <Input
+                  id={`label-${i}`}
+                  value={f.label}
+                  placeholder="ex: Telefon"
+                  onChange={(e) => update(i, { label: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-muted-foreground" htmlFor={`desc-${i}`}>Descriere (ghidează extragerea)</label>
+                <Input
+                  id={`desc-${i}`}
+                  value={f.description}
+                  placeholder="ex: Număr de telefon de contact"
+                  onChange={(e) => update(i, { description: e.target.value })}
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <label className="flex items-center gap-2 text-sm text-foreground">
+                  <input
+                    type="checkbox"
+                    checked={f.required}
+                    onChange={(e) => update(i, { required: e.target.checked })}
+                    aria-label={`Obligatoriu: ${f.label || "câmp nou"}`}
+                  />
+                  Obligatoriu
+                </label>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7"
+                  disabled={draft.length === 1}
+                  onClick={() => remove(i)}
+                  title={draft.length === 1 ? "Cel puțin un câmp este necesar" : "Șterge câmpul"}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          ))
+        )}
       </div>
 
       <div className="mt-3 flex items-center gap-3">
