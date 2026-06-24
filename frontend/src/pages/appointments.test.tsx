@@ -8,9 +8,16 @@ vi.mock("@/lib/appointments", () => ({
   useAppointments: () => mockUseAppointments(),
 }));
 
+// The conversation dialog has its own test suite; stub it so the page test
+// doesn't need its data hooks.
+vi.mock("@/components/appointments/conversation-dialog", () => ({
+  ConversationDialog: () => <button type="button">Conversație</button>,
+}));
+
 const APPT: Appointment = {
   id: "a1", customerEmail: "client@x.ro", status: "collecting",
-  fields: { nume: "Ion", telefon: null }, missingLabels: ["Telefon"],
+  fields: { nume: "Ion", telefon: null },
+  filledFields: [{ label: "Nume", value: "Ion" }], missingLabels: ["Telefon"],
   lastMessageAt: "2026-06-15T08:00:00.000Z", createdAt: "2026-06-15T07:00:00.000Z",
 };
 
