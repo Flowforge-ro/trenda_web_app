@@ -6,7 +6,7 @@ function AttachmentView({ orderId, att }: { orderId: string; att: ReviewAttachme
   return (
     <div className="rounded-md border border-gray-200 p-2">
       <div className="mb-1 flex items-center justify-between gap-2">
-        <span className="truncate text-xs font-medium text-foreground">{att.name}</span>
+        <span className="min-w-0 truncate text-xs font-medium text-foreground">{att.name}</span>
         <div className="flex shrink-0 items-center gap-3">
           {type === "application/pdf" ? (
             <a href={url} target="_blank" rel="noreferrer" className="text-xs text-primary underline">
@@ -30,12 +30,12 @@ function AttachmentView({ orderId, att }: { orderId: string; att: ReviewAttachme
 export function OfferReplyView({ orderId, data }: { orderId: string; data: OrderReview }) {
   return (
     <div className="space-y-4">
-      <div className="text-xs text-muted-foreground">
+      <div className="text-xs text-muted-foreground [overflow-wrap:anywhere]">
         <div>De la: {data.reply.fromEmail}</div>
         <div>Data: {new Date(data.reply.receivedDateTime).toLocaleString("ro-RO")}</div>
         {data.reply.subject ? <div>Subiect: {data.reply.subject}</div> : null}
       </div>
-      <pre className="max-h-64 overflow-y-auto whitespace-pre-wrap rounded-md bg-gray-50 p-3 text-sm text-foreground">
+      <pre className="max-h-64 overflow-y-auto whitespace-pre-wrap [overflow-wrap:anywhere] rounded-md bg-gray-50 p-3 text-sm text-foreground">
         {data.reply.body ?? "(fără text)"}
       </pre>
       {data.attachments.length > 0 ? (

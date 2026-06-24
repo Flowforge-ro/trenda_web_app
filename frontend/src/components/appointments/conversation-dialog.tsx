@@ -35,14 +35,14 @@ function MessageCard({
         >
           {fromCustomer ? "Client" : "Noi"}
         </span>
-        <span className="truncate text-muted-foreground">
+        <span className="min-w-0 truncate text-muted-foreground">
           {message.fromEmail ?? "—"} · {new Date(message.receivedDateTime).toLocaleString("ro-RO")}
         </span>
       </div>
       {message.subject ? (
         <p className="text-sm font-medium text-foreground">{message.subject}</p>
       ) : null}
-      <p className="mt-1 whitespace-pre-wrap text-sm text-foreground">{message.body ?? "—"}</p>
+      <p className="mt-1 whitespace-pre-wrap [overflow-wrap:anywhere] text-sm text-foreground">{message.body ?? "—"}</p>
     </div>
   );
 }
@@ -71,8 +71,8 @@ export function ConversationDialog({ appointment }: { appointment: Appointment }
       </DialogTrigger>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
-          <div className="flex items-center justify-between gap-2 pr-6">
-            <DialogTitle className="truncate">
+          <div className="flex items-center justify-between gap-2">
+            <DialogTitle className="min-w-0 truncate">
               Conversație — {appointment.customerEmail}
             </DialogTitle>
             <Button

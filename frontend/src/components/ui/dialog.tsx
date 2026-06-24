@@ -84,7 +84,8 @@ function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="dialog-header"
-      className={cn("flex flex-col gap-2", className)}
+      // pr-10 keeps titles/actions clear of the absolute close (X) button.
+      className={cn("flex flex-col gap-2 pr-10", className)}
       {...props}
     />
   )

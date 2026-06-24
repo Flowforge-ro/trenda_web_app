@@ -28,9 +28,12 @@ async function logout() {
 
 export function AppSidebar() {
   const { data: user } = useAuth();
-  const [collapsed, setCollapsed] = useState<boolean>(
-    () => localStorage.getItem("sidebar-collapsed") === "true"
-  );
+  const [collapsed, setCollapsed] = useState<boolean>(() => {
+    const stored = localStorage.getItem("sidebar-collapsed");
+    if (stored !== null) return stored === "true";
+    // No saved preference: start collapsed on mobile so the rail doesn't eat the screen.
+    return window.innerWidth < 768;
+  });
   const initial = (user?.name ?? user?.email ?? "U").charAt(0).toUpperCase();
 
   useEffect(() => {
