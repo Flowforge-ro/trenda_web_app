@@ -32,9 +32,31 @@ function LowConfidenceMark() {
 }
 
 
-export function OrderReviewDialog({ order }: { order: Order }) {
+// "failed" = automatic extraction gave up (red); "review" = low-confidence result
+// to confirm (amber). Both open the same form; only the trigger differs.
+const triggerStyles = {
+  review: {
+    label: "verifică",
+    className:
+      "border-warning/30 bg-warning/10 text-warning hover:bg-warning/20 focus-visible:ring-warning/40",
+  },
+  failed: {
+    label: "completează manual",
+    className:
+      "border-error/30 bg-error/10 text-error hover:bg-error/20 focus-visible:ring-error/40",
+  },
+} as const;
+
+export function OrderReviewDialog({
+  order,
+  variant = "review",
+}: {
+  order: Order;
+  variant?: "review" | "failed";
+}) {
   const [open, setOpen] = useState(false);
   const { data, isLoading, isError } = useOrderReview(order.id, open);
+  const trigger = triggerStyles[variant];
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -42,11 +64,11 @@ export function OrderReviewDialog({ order }: { order: Order }) {
         render={
           <button
             type="button"
-            className="inline-flex h-7 cursor-pointer items-center justify-center rounded-md border border-warning/30 bg-warning/10 px-2.5 text-xs font-medium text-warning shadow-sm transition-colors hover:bg-warning/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warning/40"
+            className={`inline-flex h-7 cursor-pointer items-center justify-center rounded-md border px-2.5 text-xs font-medium shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 ${trigger.className}`}
           />
         }
       >
-        verifică
+        {trigger.label}
       </DialogTrigger>
       <DialogContent className="max-h-[90vh] sm:max-w-4xl overflow-y-auto">
         <DialogHeader>

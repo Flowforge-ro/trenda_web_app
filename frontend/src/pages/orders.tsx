@@ -47,7 +47,11 @@ function StatusCell({ order }: { order: Order }) {
   }
 
   const reviewBadge =
-    order.replyStatus === "needs_review" ? <OrderReviewDialog order={order} /> : null;
+    order.replyStatus === "needs_review" ? (
+      <OrderReviewDialog order={order} />
+    ) : order.replyStatus === "extraction_failed" ? (
+      <OrderReviewDialog order={order} variant="failed" />
+    ) : null;
   const offerBadge =
     order.replyStatus === "offer_pending" ? <OfferDialog order={order} /> : null;
 

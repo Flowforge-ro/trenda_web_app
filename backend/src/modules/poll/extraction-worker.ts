@@ -6,13 +6,17 @@ import { logger } from "../../lib/logger.js";
 import type { Order } from "../../generated/prisma/client.js";
 import type { PollDeps, GetToken } from "./poll.types.js";
 
-type PendingOrder = Pick<Order, "id" | "orgId" | "mailboxId" | "orderNumber" | "deliveryTime" | "deliveryEarliest" | "deliveryLatest" | "partCode">;
+type PendingOrder = Pick<Order, "id" | "orgId" | "mailboxId" | "orderNumber" | "deliveryTime" | "deliveryEarliest" | "deliveryLatest" | "partCode" | "extractionAttempts">;
+
+// Transient timeouts get a few poll cycles (~15 min at the 5-min interval) before
+// the order is surfaced to the user as a failed extraction.
+const MAX_EXTRACTION_ATTEMPTS = 3;
 
 /** Extract delivery/order info for every order sitting at "reply_received". */
 export async function extractPending(deps: PollDeps, getToken: GetToken): Promise<void> {
   const pending = (await deps.prisma.order.findMany({
     where: { replyStatus: "reply_received", closedAt: null, org: { suspendedAt: null } },
-    select: { id: true, orgId: true, mailboxId: true, orderNumber: true, deliveryTime: true, deliveryEarliest: true, deliveryLatest: true, partCode: true },
+    select: { id: true, orgId: true, mailboxId: true, orderNumber: true, deliveryTime: true, deliveryEarliest: true, deliveryLatest: true, partCode: true, extractionAttempts: true },
   }));
   if (pending.length === 0) return;
 
@@ -20,8 +24,19 @@ export async function extractPending(deps: PollDeps, getToken: GetToken): Promis
     try {
       await extractForOrder(order, getToken, deps);
     } catch (err) {
-      // A hard failure leaves the order at "reply_received" so the next poll retries it.
+      // Hard failures retry for a few polls, then surface to the user: the order
+      // flips to "extraction_failed" (dropping out of this query) so the stored
+      // reply becomes visible for manual review instead of looping invisibly.
       logError("Extraction failed for order", err, { orderId: order.id });
+      const attempts = order.extractionAttempts + 1;
+      const failed = attempts >= MAX_EXTRACTION_ATTEMPTS;
+      await deps.prisma.order.update({
+        where: { id: order.id },
+        data: failed
+          ? { extractionAttempts: attempts, replyStatus: "extraction_failed", reviewReasons: "Extragerea automată a eșuat" }
+          : { extractionAttempts: attempts },
+      });
+      logEvent("db.write", { table: "order", op: "update", orderId: order.id, extractionAttempts: attempts, replyStatus: failed ? "extraction_failed" : undefined }, { correlationId: order.id, orgId: order.orgId });
     }
   }
 }

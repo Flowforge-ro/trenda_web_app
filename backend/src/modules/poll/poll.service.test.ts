@@ -153,7 +153,7 @@ test("pollReplies re-encrypts a rotated refresh token on the mailbox", async () 
   assert.ok(state.mailboxUpdates.some((u) => u.encryptedRefreshToken === "enc(RT2)"));
 });
 
-const PENDING = { id: "O2", orgId: "ORG1", mailboxId: "M1", internetMessageId: "<orig2@us>", createdAt: new Date("2026-06-01T08:00:00Z"), emailStatus: "trimis", replyStatus: "reply_received" };
+const PENDING = { id: "O2", orgId: "ORG1", mailboxId: "M1", internetMessageId: "<orig2@us>", createdAt: new Date("2026-06-01T08:00:00Z"), emailStatus: "trimis", replyStatus: "reply_received", extractionAttempts: 0 };
 
 test("extract phase writes fields and sets extracted on a confident result", async () => {
   const state: State = { orders: [PENDING], replies: [{ orderId: "O2", graphMessageId: "M2", body: "Comanda CMD42" }], replyUpdates: [], mailboxUpdates: [] };
@@ -227,10 +227,21 @@ test("ingest records fetched messages in the seen-ledger", async () => {
   assert.deepEqual((state.seen ?? []).map((s) => s.graphMessageId), ["MSG1"]);
 });
 
-test("extract phase leaves order at reply_received when the extractor throws", async () => {
+test("extract phase counts a failed attempt and keeps reply_received below the limit", async () => {
   const state: State = { orders: [PENDING], replies: [{ orderId: "O2", graphMessageId: "M2", body: "text" }], replyUpdates: [], mailboxUpdates: [] };
   await pollReplies(makeDeps(state, [], { extractOrderInfo: async () => { throw new Error("gemini down"); } }));
-  assert.equal(state.replyUpdates.find((u) => u.id === "O2"), undefined);
+  const update = state.replyUpdates.find((u) => u.id === "O2");
+  assert.deepEqual(update, { id: "O2", extractionAttempts: 1 });
+});
+
+test("extract phase flips to extraction_failed after the attempt limit", async () => {
+  const order = { ...PENDING, extractionAttempts: 2 };
+  const state: State = { orders: [order], replies: [{ orderId: "O2", graphMessageId: "M2", body: "text" }], replyUpdates: [], mailboxUpdates: [] };
+  await pollReplies(makeDeps(state, [], { extractOrderInfo: async () => { throw new Error("gemini down"); } }));
+  const update = state.replyUpdates.find((u) => u.id === "O2");
+  assert.equal(update?.replyStatus, "extraction_failed");
+  assert.equal(update?.extractionAttempts, 3);
+  assert.equal(update?.reviewReasons, "Extragerea automată a eșuat");
 });
 
 const DUE_ORDER = { id: "O3", orgId: "ORG1", mailboxId: "M1", vendorEmail: "f@ex.ro", chassisSeries: "WVW1", deliveryEarliest: new Date("2026-06-02T00:00:00.000Z"), statusRequestSentAt: null };
