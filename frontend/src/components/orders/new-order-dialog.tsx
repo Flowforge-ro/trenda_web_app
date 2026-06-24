@@ -81,7 +81,7 @@ function NewOrderForm({ vendorMailboxes, onClose }: { vendorMailboxes: Mailbox[]
                   required
                   value={form.mailboxId}
                   onChange={(e) => update("mailboxId", e.target.value)}
-                  className="h-8 rounded-lg border border-input bg-transparent px-2 text-sm"
+                  className="h-8 w-full min-w-0 rounded-lg border border-input bg-transparent px-2 text-sm"
                 >
                   <option value="" disabled>Alege o cutie poștală</option>
                   {vendorMailboxes.map((m) => (
