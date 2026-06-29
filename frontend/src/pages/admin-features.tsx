@@ -1,8 +1,6 @@
 import { useState } from "react";
+import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
-} from "@/components/ui/dialog";
 import { useOrgFeatures, useSetOrgFeature, type OrgFeature } from "@/lib/features";
 import type { Organization } from "@/lib/organizations";
 
@@ -30,8 +28,17 @@ function FeatureRow({ orgId, feature }: { orgId: string; feature: OrgFeature }) 
     <div className="space-y-2 rounded-lg border border-gray-200 p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-sm font-medium text-foreground">{feature.name}</p>
-          <p className="text-xs text-muted-foreground">{feature.description}</p>
+          <div className="flex items-center gap-2">
+            <p className="text-sm font-medium text-foreground">{feature.name}</p>
+            <span
+              className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
+                feature.enabled ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"
+              }`}
+            >
+              {feature.enabled ? "Activă" : "Inactivă"}
+            </span>
+          </div>
+          <p className="mt-0.5 text-xs text-muted-foreground">{feature.description}</p>
           <code className="text-[11px] text-muted-foreground">{feature.key}</code>
         </div>
         <Button
@@ -50,7 +57,7 @@ function FeatureRow({ orgId, feature }: { orgId: string; feature: OrgFeature }) 
           <textarea
             value={configText}
             onChange={(e) => setConfigText(e.target.value)}
-            rows={3}
+            rows={4}
             spellCheck={false}
             className="w-full rounded-lg border border-input bg-transparent p-2 font-mono text-xs"
           />
@@ -66,25 +73,33 @@ function FeatureRow({ orgId, feature }: { orgId: string; feature: OrgFeature }) 
   );
 }
 
-export function ManageFeaturesDialog({ org }: { org: Organization }) {
-  const [open, setOpen] = useState(false);
-  const { data: features = [], isLoading } = useOrgFeatures(open ? org.id : null);
+/** Full per-org feature-management page, shown inside the superadmin panel. */
+export function OrgFeaturesPage({ org, onBack }: { org: Organization; onBack: () => void }) {
+  const { data: features = [], isLoading } = useOrgFeatures(org.id);
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button variant="outline" size="sm" />}>Funcționalități</DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Funcționalități — {org.name}</DialogTitle>
-        </DialogHeader>
-        <div className="grid max-h-[60vh] gap-3 overflow-y-auto py-2">
-          {isLoading ? (
-            <p className="text-sm text-muted-foreground">Se încarcă...</p>
-          ) : (
-            features.map((f) => <FeatureRow key={f.key} orgId={org.id} feature={f} />)
-          )}
-        </div>
-      </DialogContent>
-    </Dialog>
+    <div className="space-y-4">
+      <div className="flex items-center gap-3">
+        <Button variant="ghost" size="sm" onClick={onBack}>
+          <ArrowLeft className="h-4 w-4" />
+          Înapoi
+        </Button>
+      </div>
+
+      <div>
+        <h2 className="text-xl font-semibold tracking-tight text-foreground">{org.name}</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Funcționalitățile alocate acestui client. Clienții văd doar interfața funcționalităților active.
+        </p>
+      </div>
+
+      <div className="grid gap-3">
+        {isLoading ? (
+          <p className="text-sm text-muted-foreground">Se încarcă...</p>
+        ) : (
+          features.map((f) => <FeatureRow key={f.key} orgId={org.id} feature={f} />)
+        )}
+      </div>
+    </div>
   );
 }

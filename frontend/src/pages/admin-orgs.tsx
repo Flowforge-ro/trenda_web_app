@@ -9,7 +9,7 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useOrganizations, useCreateOrganization, useSetOrganizationSuspended, type Organization } from "@/lib/organizations";
 import { UsageSection } from "@/components/admin/usage-section";
-import { ManageFeaturesDialog } from "./admin-features";
+import { OrgFeaturesPage } from "./admin-features";
 
 function CreateOrgDialog() {
   const create = useCreateOrganization();
@@ -82,6 +82,13 @@ function SuspendButton({ org }: { org: Organization }) {
 
 export function OrgsTab() {
   const { data: orgs = [], isLoading } = useOrganizations();
+  const [selectedOrg, setSelectedOrg] = useState<Organization | null>(null);
+
+  if (selectedOrg) {
+    // Keep the selected org in sync with the latest list data (name/status edits).
+    const fresh = orgs.find((o) => o.id === selectedOrg.id) ?? selectedOrg;
+    return <OrgFeaturesPage org={fresh} onBack={() => setSelectedOrg(null)} />;
+  }
 
   return (
     <div className="space-y-4">
@@ -122,7 +129,9 @@ export function OrgsTab() {
                   </TableCell>
                   <TableCell className="px-4 py-3 text-right">
                     <div className="flex justify-end gap-2">
-                      <ManageFeaturesDialog org={o} />
+                      <Button variant="outline" size="sm" onClick={() => setSelectedOrg(o)}>
+                        Funcționalități
+                      </Button>
                       <SuspendButton org={o} />
                     </div>
                   </TableCell>
