@@ -11,12 +11,15 @@ import {
 } from "lucide-react";
 import { apiFetch } from "@/lib/http";
 import { useAuth } from "@/lib/auth";
+import { FEATURE } from "@/lib/features";
 import { logAction } from "@/lib/logger";
 import { cn } from "@/lib/utils";
 
+// `feature` gates the item: it shows only when that capability is enabled for the
+// company. Items without a `feature` (Settings) always show.
 const navItems = [
-  { to: "/", label: "Comenzi", icon: ClipboardList, end: true },
-  { to: "/programari", label: "Programări", icon: CalendarDays, end: false },
+  { to: "/", label: "Comenzi", icon: ClipboardList, end: true, feature: FEATURE.vendorCommunication },
+  { to: "/programari", label: "Programări", icon: CalendarDays, end: false, feature: FEATURE.customerCommunication },
   { to: "/setari", label: "Setări", icon: Settings, end: false },
 ];
 
@@ -35,6 +38,8 @@ export function AppSidebar() {
     return window.innerWidth < 768;
   });
   const initial = (user?.name ?? user?.email ?? "U").charAt(0).toUpperCase();
+  const features = user?.features ?? [];
+  const visibleNavItems = navItems.filter((item) => !item.feature || features.includes(item.feature));
 
   useEffect(() => {
     localStorage.setItem("sidebar-collapsed", String(collapsed));
@@ -78,7 +83,7 @@ export function AppSidebar() {
 
       {/* Nav */}
       <nav className="flex-1 space-y-1 px-3 py-2">
-        {navItems.map(({ to, label, icon: Icon, end }) => (
+        {visibleNavItems.map(({ to, label, icon: Icon, end }) => (
           <NavLink
             key={to}
             to={to}

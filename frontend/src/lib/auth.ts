@@ -8,6 +8,8 @@ export interface AuthUser {
   name: string | null;
   role: "superadmin" | "admin" | "member";
   org: { id: string; name: string } | null;
+  /** Feature keys enabled for this user's company; gates customer-facing UI. */
+  features: string[];
 }
 
 async function fetchMe(): Promise<AuthUser> {

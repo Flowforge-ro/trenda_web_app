@@ -9,6 +9,7 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useOrganizations, useCreateOrganization, useSetOrganizationSuspended, type Organization } from "@/lib/organizations";
 import { UsageSection } from "@/components/admin/usage-section";
+import { ManageFeaturesDialog } from "./admin-features";
 
 function CreateOrgDialog() {
   const create = useCreateOrganization();
@@ -120,7 +121,10 @@ export function OrgsTab() {
                     )}
                   </TableCell>
                   <TableCell className="px-4 py-3 text-right">
-                    <SuspendButton org={o} />
+                    <div className="flex justify-end gap-2">
+                      <ManageFeaturesDialog org={o} />
+                      <SuspendButton org={o} />
+                    </div>
                   </TableCell>
                 </TableRow>
               ))

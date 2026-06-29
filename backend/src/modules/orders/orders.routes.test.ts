@@ -111,6 +111,7 @@ before(async () => {
 
   // Fake prisma: dispatch user.findUnique by where.email vs where.id
   const fakePrisma = {
+    organizationFeature: { findMany: () => Promise.resolve([]) },
     user: {
       findUnique({ where }: { where: { email?: string; id?: string } }) {
         if (where.email === memberUser.email) return Promise.resolve(memberUser);

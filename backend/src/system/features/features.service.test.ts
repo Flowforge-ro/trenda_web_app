@@ -1,0 +1,72 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import {
+  getCatalog,
+  listOrgFeatures,
+  setOrgFeature,
+  type FeaturesDeps,
+} from "./features.service.js";
+
+function makeDeps(opts: { orgExists?: boolean; rows?: any[]; onUpsert?: (a: any) => void } = {}): FeaturesDeps {
+  const { orgExists = true, rows = [], onUpsert } = opts;
+  return {
+    prisma: {
+      organization: {
+        findUnique: async ({ where }: any) => (orgExists ? { id: where.id } : null),
+      },
+      organizationFeature: {
+        findMany: async () => rows,
+        upsert: async (args: any) => { onUpsert?.(args); return {}; },
+      },
+    } as any,
+  };
+}
+
+test("getCatalog returns the seed features without zod internals", () => {
+  const cat = getCatalog();
+  const vendor = cat.find((f) => f.key === "vendor_communication");
+  assert.equal(vendor?.executionType, "native");
+  assert.equal(vendor?.hasConfigSchema, false);
+  assert.equal((vendor as any).configSchema, undefined);
+});
+
+test("listOrgFeatures merges every catalog feature with stored state", async () => {
+  const deps = makeDeps({ rows: [{ featureKey: "vendor_communication", enabled: true, config: { a: 1 } }] });
+  const r = await listOrgFeatures("O1", deps);
+  assert.ok(r);
+  const vendor = r!.find((f) => f.key === "vendor_communication")!;
+  const customer = r!.find((f) => f.key === "customer_communication")!;
+  assert.equal(vendor.enabled, true);
+  assert.deepEqual(vendor.config, { a: 1 });
+  assert.equal(customer.enabled, false); // unassigned -> default
+  assert.deepEqual(customer.config, {});
+});
+
+test("listOrgFeatures returns null for a missing org", async () => {
+  const r = await listOrgFeatures("ghost", makeDeps({ orgExists: false }));
+  assert.equal(r, null);
+});
+
+test("setOrgFeature rejects an unknown feature key", async () => {
+  const r = await setOrgFeature("O1", "nope", { enabled: true }, makeDeps());
+  assert.deepEqual(r, { error: "unknown_feature" });
+});
+
+test("setOrgFeature returns org_not_found when the org is missing", async () => {
+  const r = await setOrgFeature("ghost", "vendor_communication", { enabled: true }, makeDeps({ orgExists: false }));
+  assert.deepEqual(r, { error: "org_not_found" });
+});
+
+test("setOrgFeature upserts with enabled + config", async () => {
+  let captured: any;
+  const r = await setOrgFeature(
+    "O1",
+    "vendor_communication",
+    { enabled: true, config: { channel: "email" } },
+    makeDeps({ onUpsert: (a) => (captured = a) })
+  );
+  assert.deepEqual(r, { ok: true });
+  assert.deepEqual(captured.where, { orgId_featureKey: { orgId: "O1", featureKey: "vendor_communication" } });
+  assert.equal(captured.create.enabled, true);
+  assert.deepEqual(captured.update.config, { channel: "email" });
+});

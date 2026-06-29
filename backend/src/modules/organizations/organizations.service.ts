@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { prisma } from "../../prisma.js";
 import { hashPassword } from "../../lib/password.js";
+import { SEED_FEATURE_KEYS } from "../../features/registry.js";
 
 export const createOrgSchema = z.object({
   name: z.string().trim().min(1),
@@ -43,6 +44,11 @@ export async function createOrganization(input: CreateOrgInput, deps: OrgDeps = 
     });
     await tx.appointmentFieldConfig.createMany({
       data: DEFAULT_APPOINTMENT_FIELDS.map((f) => ({ ...f, orgId: org.id })),
+    });
+    // Enable the wrap-only seed features so a new org behaves exactly like the
+    // pre-feature-system product out of the box.
+    await tx.organizationFeature.createMany({
+      data: SEED_FEATURE_KEYS.map((featureKey) => ({ orgId: org.id, featureKey, enabled: true })),
     });
     return { org, admin };
   });

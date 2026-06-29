@@ -30,6 +30,7 @@ before(async () => {
   user.passwordHash = await hashPassword("pw");
 
   const fakePrisma = {
+    organizationFeature: { findMany: () => Promise.resolve([]) },
     user: {
       findUnique({ where }: { where: { email?: string; id?: string } }) {
         if (where.email === user.email || where.id === user.id) {

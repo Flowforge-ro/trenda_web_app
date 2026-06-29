@@ -1,0 +1,15 @@
+import type { FeatureDefinition } from "../types.js";
+
+/**
+ * Existing appointments pipeline: collect appointment details from customers over
+ * email (modules/appointments).
+ *
+ * Wrap-only: registered as a feature for access-control + UI gating. Its runtime
+ * stays in the appointments module — hence executionType "native".
+ */
+export const customerCommunication: FeatureDefinition = {
+  key: "customer_communication",
+  name: "Comunicare clienți",
+  description: "Colectarea programărilor și comunicarea cu clienții (Programări).",
+  executionType: "native",
+};

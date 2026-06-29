@@ -113,6 +113,7 @@ before(async () => {
   ]);
 
   const fakePrisma = {
+    organizationFeature: { findMany: () => Promise.resolve([]) },
     user: {
       findUnique({ where }: { where: { email?: string; id?: string } }) {
         if (where.email === adminUser.email) return Promise.resolve(adminUser);
@@ -156,6 +157,7 @@ before(async () => {
         organization: { create: () => Promise.resolve(fakeOrg) },
         user: { create: () => Promise.resolve(fakeAdmin) },
         appointmentFieldConfig: { createMany: () => Promise.resolve({ count: 4 }) },
+        organizationFeature: { createMany: () => Promise.resolve({ count: 2 }) },
       };
       return fn(tx);
     },

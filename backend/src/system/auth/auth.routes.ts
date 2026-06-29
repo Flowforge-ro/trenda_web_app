@@ -2,6 +2,7 @@ import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import { authenticate, changePassword } from "./login.service.js";
 import { loadSessionUser, type SessionUser } from "../../lib/auth-context.js";
+import { getEnabledFeatures } from "../features/feature-access.js";
 import { prisma } from "../../prisma.js";
 
 const loginSchema = z.object({ email: z.string().email(), password: z.string().min(1) });
@@ -17,7 +18,10 @@ async function mePayload(user: SessionUser) {
         select: { id: true, name: true },
       })
     : null;
-  return { id: user.id, email: user.email, name: user.name, role: user.role, org };
+  // The feature keys gating this user's UI. Superadmins / org-less users get none
+  // (they operate the platform via the superadmin layer, not customer features).
+  const features = user.orgId ? await getEnabledFeatures(user.orgId) : [];
+  return { id: user.id, email: user.email, name: user.name, role: user.role, org, features };
 }
 
 export const authRoutes: FastifyPluginAsync = async (app) => {

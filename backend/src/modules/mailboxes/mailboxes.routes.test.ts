@@ -75,6 +75,7 @@ before(async () => {
   const fakeOrg = { id: ORG_ID, name: "Test Org" };
 
   const fakePrisma = {
+    organizationFeature: { findMany: () => Promise.resolve([]) },
     user: {
       findUnique({ where }: { where: { email?: string; id?: string } }) {
         if (where.email === adminUser.email) return Promise.resolve(adminUser);

@@ -13,6 +13,7 @@
     "db:generate": "npx prisma generate",
     "db:studio": "npx prisma studio",
     "db:seed": "tsx prisma/seed.ts",
+    "db:backfill-features": "tsx prisma/backfill-features.ts",
     "eval:extraction": "tsx eval/extraction/run.ts"
   },
   "dependencies": {

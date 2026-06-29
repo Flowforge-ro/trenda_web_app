@@ -7,6 +7,7 @@ import {
   Dialog, DialogClose, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
 import { useAuth, useChangePassword } from "@/lib/auth";
+import { FEATURE, useHasFeature } from "@/lib/features";
 import { useMailboxes, useDisconnectMailbox, connectMailboxUrl, type MailboxType } from "@/lib/mailboxes";
 import { useUsers, useCreateUser, useResetUserPassword, type OrgUser } from "@/lib/users";
 import { logAction } from "@/lib/logger";
@@ -239,6 +240,9 @@ function ChangePasswordSection() {
 export function SettingsPage() {
   const { data: user } = useAuth();
   const isAdmin = user?.role === "admin";
+  // Appointment fields only configure the customer-communication capability;
+  // hide them when that feature isn't enabled for the company.
+  const hasCustomerComms = useHasFeature(FEATURE.customerCommunication);
   return (
     <div className="space-y-8 p-4 sm:p-8">
       <header>
@@ -247,7 +251,7 @@ export function SettingsPage() {
       </header>
       <MailboxesSection isAdmin={isAdmin} />
       {isAdmin && <UsersSection />}
-      {isAdmin && <AppointmentFieldsSection />}
+      {isAdmin && hasCustomerComms && <AppointmentFieldsSection />}
       <ChangePasswordSection />
     </div>
   );

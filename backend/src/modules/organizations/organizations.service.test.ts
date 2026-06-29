@@ -14,6 +14,7 @@ function makeDeps(over: Partial<OrgDeps> = {}): OrgDeps {
           organization: { create: async ({ data }: any) => ({ id: "O1", name: data.name }) },
           user: { create: async ({ data }: any) => ({ id: "ADM1", ...data }) },
           appointmentFieldConfig: { createMany: async ({ data }: any) => { lastSeededFields = data; return { count: data.length }; } },
+          organizationFeature: { createMany: async ({ data }: any) => ({ count: data.length }) },
         }),
       organization: {
         findMany: async () => [

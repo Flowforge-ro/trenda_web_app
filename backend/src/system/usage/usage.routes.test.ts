@@ -21,6 +21,7 @@ before(async () => {
   [adminUser.passwordHash, superUser.passwordHash] = await Promise.all([hashPassword("pw"), hashPassword("pw")]);
 
   const fakePrisma = {
+    organizationFeature: { findMany: () => Promise.resolve([]) },
     user: {
       findUnique({ where }: { where: { email?: string; id?: string } }) {
         for (const u of [adminUser, superUser]) {

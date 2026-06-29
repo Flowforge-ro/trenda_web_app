@@ -23,6 +23,38 @@ model Organization {
   appointmentFieldConfigs AppointmentFieldConfig[]
   appointments            Appointment[]
   usageEvents             UsageEvent[]
+  organizationFeatures    OrganizationFeature[]
+}
+
+// Per-company feature assignment + config. Feature *definitions* live in code
+// (src/features/registry.ts); this table holds only per-tenant state. featureKey
+// is validated against the code registry (no FK — code is the source of truth).
+model OrganizationFeature {
+  id         String       @id @default(cuid())
+  orgId      String
+  org        Organization @relation(fields: [orgId], references: [id])
+  featureKey String
+  enabled    Boolean      @default(false)
+  config     Json         @default("{}")
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  @@unique([orgId, featureKey])
+  @@index([orgId])
+}
+
+// Audit trail for executeFeature() runs. Empty until a non-native feature exists.
+model ExecutionLog {
+  id         String   @id @default(cuid())
+  orgId      String
+  featureKey String
+  adapter    String // "n8n" | "node"
+  ok         Boolean
+  error      String?
+  durationMs Int
+  createdAt  DateTime @default(now())
+
+  @@index([orgId, createdAt])
 }
 
 model User {
