@@ -12,4 +12,5 @@ export const customerCommunication: FeatureDefinition = {
   name: "Comunicare clienți",
   description: "Colectarea programărilor și comunicarea cu clienții (Programări).",
   executionType: "native",
+  requiresMailbox: true,
 };

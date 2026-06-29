@@ -29,6 +29,12 @@ export interface FeatureDefinition {
   description: string;
   executionType: ExecutionType;
   /**
+   * Whether this feature operates on a connected email mailbox. Drives the
+   * per-feature "connect mailbox" UI in settings; non-mailbox features (e.g.
+   * future WhatsApp/SMS) leave it false.
+   */
+  requiresMailbox?: boolean;
+  /**
    * n8n webhook URL/id, or node handler key. Unused for "native" features.
    * May be overridden per-company via config when it varies by tenant.
    */

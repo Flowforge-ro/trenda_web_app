@@ -7,6 +7,7 @@ import { getMailboxAccessToken } from "../../lib/mailbox-token.js";
 import { logError, logEvent } from "../../lib/db-log.js";
 import { recordUsage } from "../../lib/usage.js";
 import { resolveRelativeDelivery } from "../../lib/extraction.js";
+import { VENDOR_COMMUNICATION } from "../../features/registry.js";
 import type { Order } from "../../generated/prisma/client.js";
 
 export const orderInputSchema = z.object({
@@ -52,7 +53,7 @@ export async function createOrder(
   deps: OrderDeps = defaultDeps
 ) {
   const mailbox = await deps.prisma.mailbox.findFirst({
-    where: { id: input.mailboxId, orgId, type: "vendor_facing" },
+    where: { id: input.mailboxId, orgId, features: { some: { featureKey: VENDOR_COMMUNICATION } } },
     select: { id: true },
   });
   if (!mailbox) return null;

@@ -16,6 +16,10 @@ export const FEATURE_REGISTRY: Readonly<Record<string, FeatureDefinition>> = Obj
   Object.fromEntries(definitions.map((d) => [d.key, d]))
 );
 
+/** Named feature keys for use across the codebase (avoids magic strings). */
+export const VENDOR_COMMUNICATION = vendorCommunication.key;
+export const CUSTOMER_COMMUNICATION = customerCommunication.key;
+
 /** Keys of the seed (wrap-only) features, enabled for existing/new orgs by default. */
 export const SEED_FEATURE_KEYS: readonly string[] = [
   vendorCommunication.key,
@@ -32,4 +36,9 @@ export function getFeature(key: string): FeatureDefinition | undefined {
 
 export function isValidFeatureKey(key: string): boolean {
   return Object.prototype.hasOwnProperty.call(FEATURE_REGISTRY, key);
+}
+
+/** Keys of features that operate on a connected email mailbox. */
+export function mailboxFeatureKeys(): string[] {
+  return listFeatures().filter((f) => f.requiresMailbox).map((f) => f.key);
 }

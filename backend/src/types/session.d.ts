@@ -5,6 +5,7 @@ declare module "@fastify/secure-session" {
     userId: string;
     /** sessionVersion at login; sessions older than the user's current version are rejected. */
     sv: number;
-    pendingMailboxType: string;
+    /** Feature key chosen before the OAuth handoff, linked to the mailbox on callback. */
+    pendingMailboxFeature: string;
   }
 }

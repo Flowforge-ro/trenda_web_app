@@ -14,6 +14,7 @@ export interface CatalogFeature {
   name: string;
   description: string;
   executionType: FeatureDefinition["executionType"];
+  requiresMailbox: boolean;
   hasConfigSchema: boolean;
 }
 
@@ -23,6 +24,7 @@ function toCatalog(def: FeatureDefinition): CatalogFeature {
     name: def.name,
     description: def.description,
     executionType: def.executionType,
+    requiresMailbox: def.requiresMailbox ?? false,
     hasConfigSchema: def.configSchema !== undefined,
   };
 }

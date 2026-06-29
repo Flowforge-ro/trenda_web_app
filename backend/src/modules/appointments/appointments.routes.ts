@@ -1,5 +1,7 @@
 import type { FastifyPluginAsync } from "fastify";
 import { requireRole } from "../../lib/auth-context.js";
+import { requireFeature } from "../../system/features/feature-access.js";
+import { CUSTOMER_COMMUNICATION } from "../../features/registry.js";
 import {
   listAppointments,
   listFieldConfig,
@@ -10,6 +12,13 @@ import {
 } from "./appointments.service.js";
 
 export const appointmentsRoutes: FastifyPluginAsync = async (app) => {
+  // All appointment(-field) routes require customer_communication enabled.
+  app.addHook("preHandler", async (request, reply) => {
+    if (!request.url.startsWith("/appointments") && !request.url.startsWith("/appointment-fields")) return;
+    const user = await requireFeature(CUSTOMER_COMMUNICATION, request, reply);
+    if (!user) return reply;
+  });
+
   app.get("/appointments", async (request, reply) => {
     const user = await requireRole("member", request, reply);
     if (!user) return reply;

@@ -9,6 +9,27 @@ export const FEATURE = {
   customerCommunication: "customer_communication",
 } as const;
 
+/**
+ * Display metadata for known features, mirrored from the backend registry.
+ * When adding a feature, add it here too (label + whether it uses a mailbox).
+ */
+export interface FeatureMeta {
+  label: string;
+  requiresMailbox: boolean;
+  /** Heading for the mailbox section in settings. */
+  mailboxLabel?: string;
+}
+export const FEATURE_META: Record<string, FeatureMeta> = {
+  vendor_communication: { label: "Comunicare furnizori", requiresMailbox: true, mailboxLabel: "Cutii poștale furnizori" },
+  customer_communication: { label: "Comunicare clienți", requiresMailbox: true, mailboxLabel: "Cutii poștale clienți" },
+};
+
+/** Enabled feature keys for the current user that use a mailbox. */
+export function useMailboxFeatures(): string[] {
+  const { data: user } = useAuth();
+  return (user?.features ?? []).filter((k) => FEATURE_META[k]?.requiresMailbox);
+}
+
 /** True when the current user's company has `key` enabled. */
 export function useHasFeature(key: string): boolean {
   const { data: user } = useAuth();

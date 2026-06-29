@@ -7,54 +7,52 @@ import {
   Dialog, DialogClose, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
 import { useAuth, useChangePassword } from "@/lib/auth";
-import { FEATURE, useHasFeature } from "@/lib/features";
-import { useMailboxes, useDisconnectMailbox, connectMailboxUrl, type MailboxType } from "@/lib/mailboxes";
+import { FEATURE, useHasFeature, useMailboxFeatures, FEATURE_META } from "@/lib/features";
+import { useMailboxes, useAttachMailboxFeature, useDetachMailboxFeature, connectMailboxUrl, type Mailbox } from "@/lib/mailboxes";
 import { useUsers, useCreateUser, useResetUserPassword, type OrgUser } from "@/lib/users";
 import { logAction } from "@/lib/logger";
 import { AppointmentFieldsSection } from "@/components/settings/appointment-fields-section";
 
-function MailboxesSection({ isAdmin }: { isAdmin: boolean }) {
-  const { data: mailboxes = [], isLoading } = useMailboxes();
-  const disconnect = useDisconnectMailbox();
-  const [type, setType] = useState<MailboxType>("vendor_facing");
+/** Mailbox management for one feature: its mailboxes, connect, and attach-existing. */
+function MailboxFeatureSection({ featureKey, isAdmin, mailboxes, isLoading }: {
+  featureKey: string;
+  isAdmin: boolean;
+  mailboxes: Mailbox[];
+  isLoading: boolean;
+}) {
+  const attach = useAttachMailboxFeature();
+  const detach = useDetachMailboxFeature();
+  const [attachId, setAttachId] = useState("");
+  const meta = FEATURE_META[featureKey];
+
+  const linked = mailboxes.filter((m) => m.features.includes(featureKey));
+  // Org mailboxes not yet linked to this feature — candidates for "attach existing".
+  const attachable = mailboxes.filter((m) => !m.features.includes(featureKey));
 
   return (
     <section className="space-y-3">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <h2 className="text-lg font-semibold text-foreground">Cutii poștale</h2>
+        <h2 className="text-lg font-semibold text-foreground">{meta?.mailboxLabel ?? "Cutii poștale"}</h2>
         {isAdmin && (
-          <div className="flex items-center gap-2">
-            <select
-              value={type}
-              onChange={(e) => setType(e.target.value as MailboxType)}
-              className="h-8 rounded-lg border border-input bg-transparent px-2 text-sm"
-            >
-              <option value="vendor_facing">Furnizori</option>
-              <option value="client_facing">Clienți</option>
-            </select>
-            <Button onClick={() => { logAction("mailbox.connect.start", { type }); window.location.href = connectMailboxUrl(type); }}>
-              <Plus />
-              Conectează
-            </Button>
-          </div>
+          <Button onClick={() => { logAction("mailbox.connect.start", { featureKey }); window.location.href = connectMailboxUrl(featureKey); }}>
+            <Plus />
+            Conectează
+          </Button>
         )}
       </div>
+
       {isLoading ? (
         <p className="text-sm text-muted-foreground">Se încarcă...</p>
-      ) : mailboxes.length === 0 ? (
+      ) : linked.length === 0 ? (
         <p className="text-sm text-muted-foreground">Nicio cutie poștală conectată.</p>
       ) : (
         <ul className="divide-y rounded-lg border border-gray-200">
-          {mailboxes.map((m) => (
+          {linked.map((m) => (
             <li key={m.id} className="flex flex-col items-start gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="min-w-0">
-                <p className="text-sm font-medium text-foreground break-all">{m.email}</p>
-                <span className="inline-flex rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
-                  {m.type === "vendor_facing" ? "Furnizori" : "Clienți"}
-                </span>
-              </div>
+              <p className="min-w-0 text-sm font-medium text-foreground break-all">{m.email}</p>
               {isAdmin && (
-                <Button variant="ghost" size="icon" className="h-7 w-7" disabled={disconnect.isPending} onClick={() => disconnect.mutate(m.id)} title="Deconectează">
+                <Button variant="ghost" size="icon" className="h-7 w-7" disabled={detach.isPending}
+                  onClick={() => detach.mutate({ id: m.id, featureKey })} title="Deconectează">
                   <Trash2 className="h-4 w-4" />
                 </Button>
               )}
@@ -62,7 +60,42 @@ function MailboxesSection({ isAdmin }: { isAdmin: boolean }) {
           ))}
         </ul>
       )}
+
+      {isAdmin && attachable.length > 0 && (
+        <div className="flex items-center gap-2">
+          <select
+            value={attachId}
+            onChange={(e) => setAttachId(e.target.value)}
+            className="h-8 min-w-0 flex-1 rounded-lg border border-input bg-transparent px-2 text-sm sm:flex-none"
+          >
+            <option value="">Folosește o cutie existentă...</option>
+            {attachable.map((m) => (
+              <option key={m.id} value={m.id}>{m.email}</option>
+            ))}
+          </select>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!attachId || attach.isPending}
+            onClick={() => attach.mutate({ id: attachId, featureKey }, { onSuccess: () => setAttachId("") })}
+          >
+            Asociază
+          </Button>
+        </div>
+      )}
     </section>
+  );
+}
+
+function MailboxesSections({ isAdmin }: { isAdmin: boolean }) {
+  const mailboxFeatures = useMailboxFeatures();
+  const { data: mailboxes = [], isLoading } = useMailboxes();
+  return (
+    <>
+      {mailboxFeatures.map((featureKey) => (
+        <MailboxFeatureSection key={featureKey} featureKey={featureKey} isAdmin={isAdmin} mailboxes={mailboxes} isLoading={isLoading} />
+      ))}
+    </>
   );
 }
 
@@ -249,7 +282,7 @@ export function SettingsPage() {
         <h1 className="text-2xl font-semibold tracking-tight text-foreground">Setări</h1>
         <p className="mt-1 text-sm text-muted-foreground">Cutii poștale și utilizatori</p>
       </header>
-      <MailboxesSection isAdmin={isAdmin} />
+      <MailboxesSections isAdmin={isAdmin} />
       {isAdmin && <UsersSection />}
       {isAdmin && hasCustomerComms && <AppointmentFieldsSection />}
       <ChangePasswordSection />

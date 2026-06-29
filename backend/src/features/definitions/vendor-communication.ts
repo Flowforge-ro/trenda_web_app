@@ -13,4 +13,5 @@ export const vendorCommunication: FeatureDefinition = {
   name: "Comunicare furnizori",
   description: "Automatizarea comenzilor și a comunicării cu furnizorii (Comenzi).",
   executionType: "native",
+  requiresMailbox: true,
 };

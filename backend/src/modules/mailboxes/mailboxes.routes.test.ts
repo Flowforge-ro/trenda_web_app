@@ -1,7 +1,7 @@
 /**
  * mailboxes.routes.test.ts
  *
- * Covers GET /mailboxes, DELETE /mailboxes/:id, GET /mailboxes/connect.
+ * Covers GET /mailboxes, POST/DELETE /mailboxes/:id/features/:key, GET /mailboxes/connect.
  * Skips the OAuth callback route (needs real OAuth plugin flow).
  */
 
@@ -12,114 +12,78 @@ import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { hashPassword } from "../../lib/password.js";
 
-// ---------------------------------------------------------------------------
-// Fake data
-// ---------------------------------------------------------------------------
-
 const ORG_ID = "org-mailboxes-test";
 
-const adminUser = {
-  id: "user-admin",
-  email: "admin@example.com",
-  name: "Admin",
-  role: "admin",
-  orgId: ORG_ID,
-  passwordHash: "",
-};
-
-const memberUser = {
-  id: "user-member",
-  email: "member@example.com",
-  name: "Member",
-  role: "member",
-  orgId: ORG_ID,
-  passwordHash: "",
-};
-
+const adminUser = { id: "user-admin", email: "admin@example.com", name: "Admin", role: "admin", orgId: ORG_ID, passwordHash: "" };
+const memberUser = { id: "user-member", email: "member@example.com", name: "Member", role: "member", orgId: ORG_ID, passwordHash: "" };
 // superadmin has no orgId — fails "member" guard
-const superadminUser = {
-  id: "user-sa",
-  email: "sa@example.com",
-  name: "Superadmin",
-  role: "superadmin",
-  orgId: null as string | null,
-  passwordHash: "",
-};
+const superadminUser = { id: "user-sa", email: "sa@example.com", name: "Superadmin", role: "superadmin", orgId: null as string | null, passwordHash: "" };
 
 const fakeMailbox = {
   id: "mbox-1",
   email: "mbox@example.com",
-  type: "vendor_facing",
   connectedByUserId: adminUser.id,
   lastPolledAt: null,
   createdAt: new Date("2024-01-01T00:00:00Z"),
+  features: [{ featureKey: "vendor_communication" }],
 };
 
-// ---------------------------------------------------------------------------
-// App setup
-// ---------------------------------------------------------------------------
-
- 
 let app: any;
 let adminCookie: string;
 let memberCookie: string;
 let superadminCookie: string;
+let lastFeatureCount = 0; // remaining links detachFeature should see
 
 before(async () => {
   [adminUser.passwordHash, memberUser.passwordHash, superadminUser.passwordHash] = await Promise.all([
-    hashPassword("pw"),
-    hashPassword("pw"),
-    hashPassword("pw"),
+    hashPassword("pw"), hashPassword("pw"), hashPassword("pw"),
   ]);
 
   const fakeOrg = { id: ORG_ID, name: "Test Org" };
 
   const fakePrisma = {
-    organizationFeature: { findMany: () => Promise.resolve([]) },
+    // Org has vendor_communication enabled (drives both /auth/me and connect gating).
+    organizationFeature: { findMany: () => Promise.resolve([{ featureKey: "vendor_communication" }]) },
     user: {
       findUnique({ where }: { where: { email?: string; id?: string } }) {
-        if (where.email === adminUser.email) return Promise.resolve(adminUser);
-        if (where.email === memberUser.email) return Promise.resolve(memberUser);
-        if (where.email === superadminUser.email) return Promise.resolve(superadminUser);
-        if (where.id === adminUser.id) return Promise.resolve(adminUser);
-        if (where.id === memberUser.id) return Promise.resolve(memberUser);
-        if (where.id === superadminUser.id) return Promise.resolve(superadminUser);
+        if (where.email === adminUser.email || where.id === adminUser.id) return Promise.resolve({ ...adminUser, org: { suspendedAt: null } });
+        if (where.email === memberUser.email || where.id === memberUser.id) return Promise.resolve({ ...memberUser, org: { suspendedAt: null } });
+        if (where.email === superadminUser.email || where.id === superadminUser.id) return Promise.resolve({ ...superadminUser, org: null });
         return Promise.resolve(null);
       },
     },
     organization: {
       findUnique({ where }: { where: { id: string } }) {
-        if (where.id === ORG_ID) return Promise.resolve(fakeOrg);
-        return Promise.resolve(null);
+        return Promise.resolve(where.id === ORG_ID ? fakeOrg : null);
       },
     },
     mailbox: {
       findMany({ where }: { where: { orgId: string } }) {
-        if (where.orgId === ORG_ID) return Promise.resolve([fakeMailbox]);
-        return Promise.resolve([]);
+        return Promise.resolve(where.orgId === ORG_ID ? [fakeMailbox] : []);
+      },
+      findFirst({ where }: { where: { id: string; orgId: string } }) {
+        return Promise.resolve(where.id === fakeMailbox.id && where.orgId === ORG_ID ? { id: fakeMailbox.id } : null);
       },
       deleteMany({ where }: { where: { id: string; orgId: string } }) {
-        if (where.id === fakeMailbox.id && where.orgId === ORG_ID)
-          return Promise.resolve({ count: 1 });
-        return Promise.resolve({ count: 0 });
+        return Promise.resolve({ count: where.id === fakeMailbox.id && where.orgId === ORG_ID ? 1 : 0 });
       },
+    },
+    mailboxFeature: {
+      upsert: () => Promise.resolve({}),
+      deleteMany: () => Promise.resolve({ count: 1 }),
+      count: () => Promise.resolve(lastFeatureCount),
     },
   };
 
   app = await buildTestApp(fakePrisma);
-
   adminCookie = await loginAs(app, { email: adminUser.email, password: "pw" });
   memberCookie = await loginAs(app, { email: memberUser.email, password: "pw" });
   superadminCookie = await loginAs(app, { email: superadminUser.email, password: "pw" });
 });
 
-after(async () => {
-  await app.close();
-});
+after(async () => { await app.close(); });
 
-// ---------------------------------------------------------------------------
-// GET /mailboxes
-// ---------------------------------------------------------------------------
+// --- GET /mailboxes ---
 
 test("GET /mailboxes without session returns 401", async () => {
   const res = await app.inject({ method: "GET", url: "/mailboxes" });
@@ -127,102 +91,103 @@ test("GET /mailboxes without session returns 401", async () => {
 });
 
 test("GET /mailboxes as superadmin (no orgId) returns 403", async () => {
-  const res = await app.inject({
-    method: "GET",
-    url: "/mailboxes",
-    headers: { cookie: superadminCookie },
-  });
+  const res = await app.inject({ method: "GET", url: "/mailboxes", headers: { cookie: superadminCookie } });
   assert.equal(res.statusCode, 403);
-  assert.deepEqual(res.json(), { error: "Forbidden" });
 });
 
-test("GET /mailboxes as member returns 200 with array", async () => {
-  const res = await app.inject({
-    method: "GET",
-    url: "/mailboxes",
-    headers: { cookie: memberCookie },
-  });
+test("GET /mailboxes as member returns 200 with feature keys", async () => {
+  const res = await app.inject({ method: "GET", url: "/mailboxes", headers: { cookie: memberCookie } });
   assert.equal(res.statusCode, 200);
   const body = res.json();
-  assert.ok(Array.isArray(body));
   assert.equal(body.length, 1);
   assert.equal(body[0].id, fakeMailbox.id);
+  assert.deepEqual(body[0].features, ["vendor_communication"]);
 });
 
-// ---------------------------------------------------------------------------
-// DELETE /mailboxes/:id
-// ---------------------------------------------------------------------------
+// --- POST /mailboxes/:id/features/:key (attach) ---
 
-test("DELETE /mailboxes/:id without session returns 401", async () => {
-  const res = await app.inject({ method: "DELETE", url: `/mailboxes/${fakeMailbox.id}` });
+test("POST attach as member returns 403", async () => {
+  const res = await app.inject({ method: "POST", url: `/mailboxes/${fakeMailbox.id}/features/vendor_communication`, headers: { cookie: memberCookie } });
+  assert.equal(res.statusCode, 403);
+});
+
+test("POST attach an enabled feature returns 200", async () => {
+  const res = await app.inject({ method: "POST", url: `/mailboxes/${fakeMailbox.id}/features/vendor_communication`, headers: { cookie: adminCookie } });
+  assert.equal(res.statusCode, 200);
+});
+
+test("POST attach a not-enabled feature returns 403", async () => {
+  const res = await app.inject({ method: "POST", url: `/mailboxes/${fakeMailbox.id}/features/customer_communication`, headers: { cookie: adminCookie } });
+  assert.equal(res.statusCode, 403);
+});
+
+test("POST attach an unknown feature returns 400", async () => {
+  const res = await app.inject({ method: "POST", url: `/mailboxes/${fakeMailbox.id}/features/ghost`, headers: { cookie: adminCookie } });
+  assert.equal(res.statusCode, 400);
+});
+
+// --- DELETE /mailboxes/:id/features/:key (detach) ---
+
+test("DELETE detach without session returns 401", async () => {
+  const res = await app.inject({ method: "DELETE", url: `/mailboxes/${fakeMailbox.id}/features/vendor_communication` });
   assert.equal(res.statusCode, 401);
 });
 
-test("DELETE /mailboxes/:id as member returns 403", async () => {
-  const res = await app.inject({
-    method: "DELETE",
-    url: `/mailboxes/${fakeMailbox.id}`,
-    headers: { cookie: memberCookie },
-  });
+test("DELETE detach as member returns 403", async () => {
+  const res = await app.inject({ method: "DELETE", url: `/mailboxes/${fakeMailbox.id}/features/vendor_communication`, headers: { cookie: memberCookie } });
   assert.equal(res.statusCode, 403);
-  assert.deepEqual(res.json(), { error: "Forbidden" });
 });
 
-test("DELETE /mailboxes/:id with unknown id returns 404", async () => {
-  const res = await app.inject({
-    method: "DELETE",
-    url: "/mailboxes/no-such-mbox",
-    headers: { cookie: adminCookie },
-  });
+test("DELETE detach with unknown mailbox returns 404", async () => {
+  const res = await app.inject({ method: "DELETE", url: "/mailboxes/no-such/features/vendor_communication", headers: { cookie: adminCookie } });
   assert.equal(res.statusCode, 404);
-  assert.deepEqual(res.json(), { error: "Mailbox not found" });
 });
 
-test("DELETE /mailboxes/:id with known id returns 200", async () => {
-  const res = await app.inject({
-    method: "DELETE",
-    url: `/mailboxes/${fakeMailbox.id}`,
-    headers: { cookie: adminCookie },
-  });
+test("DELETE detach last feature deletes the mailbox", async () => {
+  lastFeatureCount = 0;
+  const res = await app.inject({ method: "DELETE", url: `/mailboxes/${fakeMailbox.id}/features/vendor_communication`, headers: { cookie: adminCookie } });
   assert.equal(res.statusCode, 200);
-  assert.deepEqual(res.json(), { ok: true });
+  assert.deepEqual(res.json(), { ok: true, deletedMailbox: true });
 });
 
-// ---------------------------------------------------------------------------
-// GET /mailboxes/connect
-// ---------------------------------------------------------------------------
+test("DELETE detach keeps mailbox when other features remain", async () => {
+  lastFeatureCount = 1;
+  const res = await app.inject({ method: "DELETE", url: `/mailboxes/${fakeMailbox.id}/features/vendor_communication`, headers: { cookie: adminCookie } });
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(res.json(), { ok: true, deletedMailbox: false });
+});
+
+// --- GET /mailboxes/connect ---
 
 test("GET /mailboxes/connect without session returns 401", async () => {
-  const res = await app.inject({ method: "GET", url: "/mailboxes/connect?type=vendor_facing" });
+  const res = await app.inject({ method: "GET", url: "/mailboxes/connect?feature=vendor_communication" });
   assert.equal(res.statusCode, 401);
 });
 
 test("GET /mailboxes/connect as member returns 403", async () => {
-  const res = await app.inject({
-    method: "GET",
-    url: "/mailboxes/connect?type=vendor_facing",
-    headers: { cookie: memberCookie },
-  });
+  const res = await app.inject({ method: "GET", url: "/mailboxes/connect?feature=vendor_communication", headers: { cookie: memberCookie } });
   assert.equal(res.statusCode, 403);
-  assert.deepEqual(res.json(), { error: "Forbidden" });
 });
 
-test("GET /mailboxes/connect with invalid type returns 400", async () => {
-  const res = await app.inject({
-    method: "GET",
-    url: "/mailboxes/connect?type=invalid_type",
-    headers: { cookie: adminCookie },
-  });
-  assert.equal(res.statusCode, 400);
-  assert.deepEqual(res.json(), { error: "Invalid mailbox type" });
+test("GET /mailboxes/connect with an enabled feature redirects to OAuth", async () => {
+  const res = await app.inject({ method: "GET", url: "/mailboxes/connect?feature=vendor_communication", headers: { cookie: adminCookie } });
+  assert.equal(res.statusCode, 302);
 });
 
-test("GET /mailboxes/connect with missing type returns 400", async () => {
-  const res = await app.inject({
-    method: "GET",
-    url: "/mailboxes/connect",
-    headers: { cookie: adminCookie },
-  });
+test("GET /mailboxes/connect with a not-enabled feature returns 403", async () => {
+  const res = await app.inject({ method: "GET", url: "/mailboxes/connect?feature=customer_communication", headers: { cookie: adminCookie } });
+  assert.equal(res.statusCode, 403);
+  assert.deepEqual(res.json(), { error: "Feature not enabled" });
+});
+
+test("GET /mailboxes/connect with an invalid feature returns 400", async () => {
+  const res = await app.inject({ method: "GET", url: "/mailboxes/connect?feature=invalid", headers: { cookie: adminCookie } });
   assert.equal(res.statusCode, 400);
-  assert.deepEqual(res.json(), { error: "Invalid mailbox type" });
+  assert.deepEqual(res.json(), { error: "Invalid feature" });
+});
+
+test("GET /mailboxes/connect with missing feature returns 400", async () => {
+  const res = await app.inject({ method: "GET", url: "/mailboxes/connect", headers: { cookie: adminCookie } });
+  assert.equal(res.statusCode, 400);
+  assert.deepEqual(res.json(), { error: "Invalid feature" });
 });

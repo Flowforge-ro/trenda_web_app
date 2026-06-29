@@ -1,5 +1,7 @@
 import type { FastifyPluginAsync } from "fastify";
 import { requireRole } from "../../lib/auth-context.js";
+import { requireFeature } from "../../system/features/feature-access.js";
+import { VENDOR_COMMUNICATION } from "../../features/registry.js";
 import { acceptOffer, closeOrder, createOrder, listOrders, rejectOffer, resendOrderEmail, flagOrder, unflagOrder, flagOrderSchema, orderInputSchema, listOrdersQuerySchema } from "./orders.service.js";
 import { getOrderReview, getReviewAttachment, saveOrderReview, reviewSaveSchema } from "./review.service.js";
 
@@ -8,6 +10,12 @@ export function contentDisposition(name: string): string {
 }
 
 export const ordersRoutes: FastifyPluginAsync = async (app) => {
+  // Every /orders route requires the org to have vendor_communication enabled.
+  app.addHook("preHandler", async (request, reply) => {
+    if (!request.url.startsWith("/orders")) return;
+    const user = await requireFeature(VENDOR_COMMUNICATION, request, reply);
+    if (!user) return reply;
+  });
   app.post("/orders", async (request, reply) => {
     const user = await requireRole("member", request, reply);
     if (!user) return reply;

@@ -36,7 +36,7 @@ before(async () => {
   ]);
 
   const fakePrisma = {
-    organizationFeature: { findMany: () => Promise.resolve([]) },
+    organizationFeature: { findMany: () => Promise.resolve([{ featureKey: "customer_communication" }]) },
     user: {
       findUnique({ where }: { where: { email?: string; id?: string } }) {
         for (const u of [memberUser, adminUser, superUser]) {

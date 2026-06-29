@@ -18,6 +18,7 @@ import { renderMissingFields } from "../../lib/template.js";
 import { logError, logEvent } from "../../lib/db-log.js";
 import { logger } from "../../lib/logger.js";
 import { recordUsage, recordLlmUsage } from "../../lib/usage.js";
+import { CUSTOMER_COMMUNICATION } from "../../features/registry.js";
 
 export interface ClientPollDeps {
   prisma: typeof prisma;
@@ -47,8 +48,13 @@ const defaultDeps: ClientPollDeps = {
 
 
 export async function pollClientMailboxes(deps: ClientPollDeps = defaultDeps): Promise<void> {
+  // Only poll mailboxes linked to customer_communication whose org currently has
+  // that feature enabled — disabling the feature halts its automation.
   const mailboxes = await deps.prisma.mailbox.findMany({
-    where: { type: "client_facing" },
+    where: {
+      features: { some: { featureKey: CUSTOMER_COMMUNICATION } },
+      org: { organizationFeatures: { some: { featureKey: CUSTOMER_COMMUNICATION, enabled: true } } },
+    },
     select: { id: true, orgId: true, email: true, lastPolledAt: true, createdAt: true },
   });
 

@@ -9,7 +9,7 @@ function makeDeps(overrides: Partial<OrderDeps> = {}): OrderDeps {
     prisma: {
       mailbox: {
         findFirst: async ({ where }: any) =>
-          where.id === "M1" && where.orgId === "O1" && where.type === "vendor_facing" ? { id: "M1" } : null,
+          where.id === "M1" && where.orgId === "O1" && where.features?.some?.featureKey === "vendor_communication" ? { id: "M1" } : null,
         findUnique: async () => ({ encryptedRefreshToken: "enc" }),
         update: async () => ({}),
       },
@@ -125,7 +125,7 @@ test("acceptOffer emails vendor and sets accepted", async () => {
     prisma: {
       mailbox: {
         findFirst: async ({ where }: any) =>
-          where.id === "M1" && where.orgId === "O1" && where.type === "vendor_facing" ? { id: "M1" } : null,
+          where.id === "M1" && where.orgId === "O1" && where.features?.some?.featureKey === "vendor_communication" ? { id: "M1" } : null,
         findUnique: async () => ({ encryptedRefreshToken: "enc" }),
         update: async () => ({}),
       },
@@ -161,7 +161,7 @@ async function acceptWith(deliveryTime: string | null, nowIso: string): Promise<
     prisma: {
       mailbox: {
         findFirst: async ({ where }: any) =>
-          where.id === "M1" && where.orgId === "O1" && where.type === "vendor_facing" ? { id: "M1" } : null,
+          where.id === "M1" && where.orgId === "O1" && where.features?.some?.featureKey === "vendor_communication" ? { id: "M1" } : null,
         findUnique: async () => ({ encryptedRefreshToken: "enc" }),
         update: async () => ({}),
       },
@@ -220,7 +220,7 @@ test("acceptOffer returns null when order is not offer_pending", async () => {
     prisma: {
       mailbox: {
         findFirst: async ({ where }: any) =>
-          where.id === "M1" && where.orgId === "O1" && where.type === "vendor_facing" ? { id: "M1" } : null,
+          where.id === "M1" && where.orgId === "O1" && where.features?.some?.featureKey === "vendor_communication" ? { id: "M1" } : null,
         findUnique: async () => ({ encryptedRefreshToken: "enc" }),
         update: async () => ({}),
       },
@@ -245,7 +245,7 @@ test("rejectOffer closes the order and marks rejected", async () => {
     prisma: {
       mailbox: {
         findFirst: async ({ where }: any) =>
-          where.id === "M1" && where.orgId === "O1" && where.type === "vendor_facing" ? { id: "M1" } : null,
+          where.id === "M1" && where.orgId === "O1" && where.features?.some?.featureKey === "vendor_communication" ? { id: "M1" } : null,
         findUnique: async () => ({ encryptedRefreshToken: "enc" }),
         update: async () => ({}),
       },

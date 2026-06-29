@@ -9,6 +9,7 @@ import { matchReply, normalizeMessageId } from "./matching.js";
 import { logError, logEvent } from "../../lib/db-log.js";
 import { extractPending } from "./extraction-worker.js";
 import { requestStatusUpdates } from "./status-request.js";
+import { VENDOR_COMMUNICATION } from "../../features/registry.js";
 import type { PollDeps, GetToken } from "./poll.types.js";
 import type { Order } from "../../generated/prisma/client.js";
 
@@ -59,7 +60,11 @@ async function ingestReplies(deps: PollDeps, getToken: GetToken): Promise<void> 
       internetMessageId: { not: null },
       closedAt: null,
       createdAt: { gte: new Date(deps.now().getTime() - MATCH_WINDOW_MS) },
-      org: { suspendedAt: null },
+      // Skip orgs that are suspended or no longer have vendor_communication enabled.
+      org: {
+        suspendedAt: null,
+        organizationFeatures: { some: { featureKey: VENDOR_COMMUNICATION, enabled: true } },
+      },
     },
     select: { id: true, mailboxId: true, internetMessageId: true, createdAt: true },
   }));

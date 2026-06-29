@@ -27,9 +27,9 @@ vi.mock("@/lib/logger", () => ({
 
 import { useMailboxes } from "@/lib/mailboxes";
 
-const MB1 = { id: "mb1", email: "furnizor@exemplu.ro", type: "vendor_facing" as const };
-const MB2 = { id: "mb2", email: "alt@exemplu.ro", type: "vendor_facing" as const };
-const MB_CLIENT = { id: "mb3", email: "client@exemplu.ro", type: "client_facing" as const };
+const MB1 = { id: "mb1", email: "furnizor@exemplu.ro", features: ["vendor_communication"] };
+const MB2 = { id: "mb2", email: "alt@exemplu.ro", features: ["vendor_communication"] };
+const MB_CLIENT = { id: "mb3", email: "client@exemplu.ro", features: ["customer_communication"] };
 
 function qc() {
   return new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });

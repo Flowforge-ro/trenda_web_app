@@ -8,6 +8,7 @@ import {
 } from "@/components/ui/dialog";
 import { useCreateOrder } from "@/lib/orders";
 import { useMailboxes, type Mailbox } from "@/lib/mailboxes";
+import { FEATURE } from "@/lib/features";
 
 interface NewOrderForm {
   vendorEmail: string;
@@ -22,7 +23,7 @@ const emptyForm: NewOrderForm = { vendorEmail: "", chassisSeries: "", partCode: 
 export function NewOrderDialog() {
   const [open, setOpen] = useState(false);
   const { data: mailboxes = [] } = useMailboxes();
-  const vendorMailboxes = mailboxes.filter((m) => m.type === "vendor_facing");
+  const vendorMailboxes = mailboxes.filter((m) => m.features.includes(FEATURE.vendorCommunication));
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>

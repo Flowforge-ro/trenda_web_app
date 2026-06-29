@@ -80,7 +80,6 @@ model Mailbox {
   org                   Organization @relation(fields: [orgId], references: [id])
   microsoftId           String       @unique
   email                 String
-  type                  String
   encryptedRefreshToken String
   connectedByUserId     String
   connectedBy           User         @relation("ConnectedBy", fields: [connectedByUserId], references: [id])
@@ -90,6 +89,20 @@ model Mailbox {
   orders                Order[]
   appointments          Appointment[]
   seenMessages          SeenMessage[]
+  features              MailboxFeature[]
+}
+
+// Which features a connected mailbox serves. Replaces the old single `type`
+// field so one email can power multiple features within an org. featureKey is
+// validated against the code registry (no FK — code is the source of truth).
+model MailboxFeature {
+  mailboxId  String
+  mailbox    Mailbox  @relation(fields: [mailboxId], references: [id], onDelete: Cascade)
+  featureKey String
+  createdAt  DateTime @default(now())
+
+  @@id([mailboxId, featureKey])
+  @@index([featureKey])
 }
 
 // Dedupe ledger for the inbox poll overlap window. The poll re-fetches a 2-min
