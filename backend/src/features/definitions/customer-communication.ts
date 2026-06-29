@@ -13,4 +13,9 @@ export const customerCommunication: FeatureDefinition = {
   description: "Colectarea programărilor și comunicarea cu clienții (Programări).",
   executionType: "native",
   requiresMailbox: true,
+  usageMetrics: [
+    { key: "appointments", label: "Programări", kind: "outcome", unit: "count" },
+    { key: "emailsSent", label: "Emailuri trimise", kind: "resource", unit: "count" },
+    { key: "llmCostUsd", label: "Cost AI (USD)", kind: "resource", unit: "usd" },
+  ],
 };

@@ -1,4 +1,5 @@
 import { logError } from "../../lib/db-log.js";
+import { VENDOR_COMMUNICATION } from "../../features/registry.js";
 import type { PollDeps, GetToken } from "./poll.types.js";
 
 function daysUntil(date: Date, now: Date): number {
@@ -30,7 +31,7 @@ export async function requestStatusUpdates(deps: PollDeps, getToken: GetToken): 
         subject: `Status comandă — ${order.chassisSeries}`,
         body: "Status?",
       });
-      await deps.recordUsage({ orgId: order.orgId, kind: "email_write", emails: 1 });
+      await deps.recordUsage({ orgId: order.orgId, featureKey: VENDOR_COMMUNICATION, kind: "email_write", emails: 1 });
       await deps.prisma.order.update({ where: { id: order.id }, data: { statusRequestSentAt: now } });
     } catch (err) {
       // Leave statusRequestSentAt null so the next poll retries this order.

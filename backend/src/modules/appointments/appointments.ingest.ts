@@ -90,7 +90,7 @@ async function pollClientMailbox(mailbox: ClientMailbox, deps: ClientPollDeps): 
 
   // First poll starts at mailbox connection time: no historical backfill.
   const base = mailbox.lastPolledAt ?? mailbox.createdAt;
-  const { messages, newest } = await fetchMailboxMessages(deps, accessToken, base, mailbox.orgId, mailbox.id);
+  const { messages, newest } = await fetchMailboxMessages(deps, accessToken, base, mailbox.orgId, mailbox.id, CUSTOMER_COMMUNICATION);
 
   // Mark a message seen only on successful processing: a thrown classify/extract
   // (e.g. transient LLM error) stays unmarked so the next poll retries it. Junk
@@ -155,9 +155,9 @@ async function processMessage(
     );
     const ids = { correlationId: message.conversationId, orgId: mailbox.orgId };
     const result = await deps.extractAppointment(message.body.content, fields, today, { classify: true, ...ids });
-    await recordLlmUsage(mailbox.orgId, result.usage, deps.recordUsage);
+    await recordLlmUsage(mailbox.orgId, result.usage, deps.recordUsage, CUSTOMER_COMMUNICATION);
     // Classification outcome: appointment vs junk (other).
-    await deps.recordUsage({ orgId: mailbox.orgId, kind: "classification", outcome: result.intent });
+    await deps.recordUsage({ orgId: mailbox.orgId, featureKey: CUSTOMER_COMMUNICATION, kind: "classification", outcome: result.intent });
     logEvent("appt.classify", { from, conversationId: message.conversationId, intent: result.intent, fields: result.fields }, ids);
     if (result.intent === "other") return; // ignored entirely (spec decision)
 
@@ -176,7 +176,7 @@ async function processMessage(
     logEvent("db.write", { table: "appointment", op: "create", appointmentId: created.id, status: missing.length === 0 ? "complete" : "collecting", missing: missing.map((f) => f.key) }, ids);
     if (missing.length > 0) {
       await deps.replyToMessage(accessToken, message.id, deps.renderMissingFields(missing.map((f) => f.label)));
-      await deps.recordUsage({ orgId: mailbox.orgId, kind: "email_write", emails: 1 });
+      await deps.recordUsage({ orgId: mailbox.orgId, featureKey: CUSTOMER_COMMUNICATION, kind: "email_write", emails: 1 });
     }
     return;
   }
@@ -198,7 +198,7 @@ async function processMessage(
   );
   const ids = { correlationId: message.conversationId, orgId: mailbox.orgId };
   const result = await deps.extractAppointment(message.body.content, fields, today, { classify: false, ...ids });
-  await recordLlmUsage(mailbox.orgId, result.usage, deps.recordUsage);
+  await recordLlmUsage(mailbox.orgId, result.usage, deps.recordUsage, CUSTOMER_COMMUNICATION);
   const merged = mergeFields(existing.fields as Record<string, string | null>, result.fields);
   const missing = missingRequired(fields, merged);
   const wasComplete = existing.status === "complete";
@@ -218,6 +218,6 @@ async function processMessage(
   // Never email a thread that has already completed (spec: corrections merge silently).
   if (missing.length > 0 && !wasComplete) {
     await deps.replyToMessage(accessToken, message.id, deps.renderMissingFields(missing.map((f) => f.label)));
-    await deps.recordUsage({ orgId: mailbox.orgId, kind: "email_write", emails: 1 });
+    await deps.recordUsage({ orgId: mailbox.orgId, featureKey: CUSTOMER_COMMUNICATION, kind: "email_write", emails: 1 });
   }
 }

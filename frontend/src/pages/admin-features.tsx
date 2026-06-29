@@ -4,11 +4,31 @@ import { Button } from "@/components/ui/button";
 import { useOrgFeatures, useSetOrgFeature, type OrgFeature } from "@/lib/features";
 import type { Organization } from "@/lib/organizations";
 
+function fmt(value: number, unit?: "count" | "usd") {
+  return unit === "usd" ? `$${value.toFixed(2)}` : String(value);
+}
+
 function FeatureRow({ orgId, feature }: { orgId: string; feature: OrgFeature }) {
   const setFeature = useSetOrgFeature();
-  // Local draft of the config JSON so superadmins can edit before saving.
+  // Local drafts so superadmins can edit before saving.
   const [configText, setConfigText] = useState(() => JSON.stringify(feature.config ?? {}, null, 2));
   const [configError, setConfigError] = useState<string | null>(null);
+  // Per-metric limit inputs as strings ("" = unlimited).
+  const [limitDraft, setLimitDraft] = useState<Record<string, string>>(() =>
+    Object.fromEntries(feature.usageMetrics.map((m) => [m.key, feature.limits[m.key]?.toString() ?? ""]))
+  );
+
+  function buildLimits(): Record<string, number> {
+    const out: Record<string, number> = {};
+    for (const m of feature.usageMetrics) {
+      const raw = limitDraft[m.key]?.trim();
+      if (raw) {
+        const n = Number(raw);
+        if (Number.isFinite(n) && n >= 0) out[m.key] = n;
+      }
+    }
+    return out;
+  }
 
   function save(enabled: boolean) {
     let config: unknown = {};
@@ -21,7 +41,7 @@ function FeatureRow({ orgId, feature }: { orgId: string; feature: OrgFeature }) 
       }
     }
     setConfigError(null);
-    setFeature.mutate({ orgId, key: feature.key, enabled, config });
+    setFeature.mutate({ orgId, key: feature.key, enabled, config, limits: buildLimits() });
   }
 
   return (
@@ -50,6 +70,44 @@ function FeatureRow({ orgId, feature }: { orgId: string; feature: OrgFeature }) 
           {feature.enabled ? "Dezactivează" : "Activează"}
         </Button>
       </div>
+
+      {feature.enabled && feature.usageMetrics.length > 0 && (
+        <div className="space-y-2 rounded-md bg-gray-50 p-3">
+          <p className="text-xs font-medium text-muted-foreground">Utilizare lunară &amp; limite</p>
+          <div className="space-y-2">
+            {feature.usageMetrics.map((m) => {
+              const u = feature.usage[m.key];
+              const over = u?.over ?? false;
+              return (
+                <div key={m.key} className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <span className="text-sm text-foreground">{m.label}</span>
+                    <span className={`ml-2 text-xs ${over ? "font-semibold text-red-600" : "text-muted-foreground"}`}>
+                      {fmt(u?.used ?? 0, m.unit)}
+                      {u?.limit != null ? ` / ${fmt(u.limit, m.unit)}` : " / ∞"}
+                      {over ? " — depășit" : ""}
+                    </span>
+                  </div>
+                  <input
+                    type="number"
+                    min={0}
+                    step={m.unit === "usd" ? "0.01" : "1"}
+                    placeholder="∞"
+                    value={limitDraft[m.key] ?? ""}
+                    onChange={(e) => setLimitDraft((d) => ({ ...d, [m.key]: e.target.value }))}
+                    className="h-7 w-24 rounded-md border border-input bg-transparent px-2 text-right text-xs"
+                  />
+                </div>
+              );
+            })}
+          </div>
+          <div className="flex justify-end">
+            <Button variant="outline" size="sm" disabled={setFeature.isPending} onClick={() => save(true)}>
+              Salvează limitele
+            </Button>
+          </div>
+        </div>
+      )}
 
       {feature.enabled && (
         <div className="space-y-1">

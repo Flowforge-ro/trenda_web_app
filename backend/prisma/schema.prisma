@@ -36,6 +36,9 @@ model OrganizationFeature {
   featureKey String
   enabled    Boolean      @default(false)
   config     Json         @default("{}")
+  // Per-month soft quotas keyed by metric (e.g. { "orders": 500, "emailsSent": 1000 }).
+  // Absent key = unlimited. Enforcement is soft (flagged in the superadmin UI).
+  limits     Json         @default("{}")
   createdAt  DateTime     @default(now())
   updatedAt  DateTime     @updatedAt
 
@@ -202,6 +205,7 @@ model UsageEvent {
   id               String       @id @default(cuid())
   orgId            String
   org              Organization @relation(fields: [orgId], references: [id])
+  featureKey       String? // which feature incurred this usage (null = legacy/unattributed)
   kind             String // "llm" | "email_read" | "email_write" | "classification"
   provider         String? // "openai" | "gemini"
   model            String?
@@ -213,6 +217,7 @@ model UsageEvent {
   createdAt        DateTime     @default(now())
 
   @@index([orgId, createdAt])
+  @@index([orgId, featureKey, createdAt]) // per-feature usage/quota aggregation
 }
 
 model AppointmentFieldConfig {

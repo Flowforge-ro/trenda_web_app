@@ -121,6 +121,7 @@ test("closeOrder keeps the original closedAt when already closed", async () => {
 test("acceptOffer emails vendor and sets accepted", async () => {
   const sentTo: string[] = [];
   const recordedKinds: string[] = [];
+  const recordedFeatures: (string | undefined)[] = [];
   const deps = makeDeps({
     prisma: {
       mailbox: {
@@ -143,12 +144,13 @@ test("acceptOffer emails vendor and sets accepted", async () => {
       sentTo.push(msg.to);
       return { internetMessageId: "<offer@x>" };
     },
-    recordUsage: (async (args: any) => { recordedKinds.push(args.kind); }) as any,
+    recordUsage: (async (args: any) => { recordedKinds.push(args.kind); recordedFeatures.push(args.featureKey); }) as any,
   });
   const order = await acceptOffer("O1", "ord1", deps);
   assert.ok(order);
   assert.equal(sentTo[0], input.vendorEmail);
   assert.equal(recordedKinds[0], "email_write");
+  assert.equal(recordedFeatures[0], "vendor_communication");
   assert.equal(order!.replyStatus, "accepted");
 });
 

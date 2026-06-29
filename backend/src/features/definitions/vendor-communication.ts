@@ -14,4 +14,9 @@ export const vendorCommunication: FeatureDefinition = {
   description: "Automatizarea comenzilor și a comunicării cu furnizorii (Comenzi).",
   executionType: "native",
   requiresMailbox: true,
+  usageMetrics: [
+    { key: "orders", label: "Comenzi", kind: "outcome", unit: "count" },
+    { key: "emailsSent", label: "Emailuri trimise", kind: "resource", unit: "count" },
+    { key: "llmCostUsd", label: "Cost AI (USD)", kind: "resource", unit: "usd" },
+  ],
 };

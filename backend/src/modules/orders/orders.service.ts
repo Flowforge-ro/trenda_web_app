@@ -93,7 +93,7 @@ async function sendOrderEmail(
       subject: `Cerere comandă piesă — ${order.chassisSeries}`,
       body: deps.renderStatusRequest({ partCode: order.partCode, chassisSeries: order.chassisSeries }),
     });
-    await deps.recordUsage({ orgId: order.orgId, kind: "email_write", emails: 1 });
+    await deps.recordUsage({ orgId: order.orgId, featureKey: VENDOR_COMMUNICATION, kind: "email_write", emails: 1 });
 
     const updated = await deps.prisma.order.update({
       where: { id: order.id },
@@ -149,7 +149,7 @@ export async function acceptOffer(orgId: string, orderId: string, deps: OrderDep
     subject: `Confirmare comandă — ${order.chassisSeries}`,
     body: deps.renderOfferAcceptance({ partCode: order.partCode, chassisSeries: order.chassisSeries }),
   });
-  await deps.recordUsage({ orgId: order.orgId, kind: "email_write", emails: 1 });
+  await deps.recordUsage({ orgId: order.orgId, featureKey: VENDOR_COMMUNICATION, kind: "email_write", emails: 1 });
   // A relative lead time ("5-7 zile lucrătoare") only starts once the offer is
   // accepted, so re-anchor the delivery window to now. Absolute dates stay put.
   const reanchored = resolveRelativeDelivery(order.deliveryTime, deps.now());

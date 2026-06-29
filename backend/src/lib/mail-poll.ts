@@ -36,7 +36,8 @@ export async function fetchMailboxMessages(
   accessToken: string,
   base: Date,
   orgId: string | null,
-  mailboxId: string
+  mailboxId: string,
+  featureKey?: string
 ): Promise<{ messages: GraphMessage[]; newest: Date | null }> {
   const sinceIso = new Date(base.getTime() - OVERLAP_MS).toISOString();
   const fetched = await deps.listMessagesSince(accessToken, sinceIso);
@@ -82,7 +83,7 @@ export async function fetchMailboxMessages(
   );
 
   if (messages.length > 0 && orgId) {
-    await deps.recordUsage({ orgId, kind: "email_read", emails: messages.length });
+    await deps.recordUsage({ orgId, featureKey, kind: "email_read", emails: messages.length });
   }
 
   // Prune ledger rows that can never be re-fetched again: anything older than the

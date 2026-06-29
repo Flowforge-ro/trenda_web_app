@@ -132,6 +132,8 @@ test("meters a classification event with the intent outcome and email_read", asy
   assert.equal(cls.outcome, "other");
   assert.equal(cls.orgId, "org1");
   assert.ok(state.usage.some((e) => e.kind === "email_read" && e.emails === 1));
+  // Every appointment-pipeline usage event is attributed to customer_communication.
+  assert.ok(state.usage.length > 0 && state.usage.every((e) => e.featureKey === "customer_communication"));
 });
 
 test("a message already in the seen-ledger is skipped: no LLM classify, no email_read meter", async () => {

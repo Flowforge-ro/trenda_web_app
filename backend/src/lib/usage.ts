@@ -26,6 +26,8 @@ export function estimateCostUsd(model: string, inputTokens: number, outputTokens
 
 export interface UsageEventInput {
   orgId: string;
+  /** Which feature incurred this usage. Omit only for genuinely cross-feature events. */
+  featureKey?: string;
   kind: "llm" | "email_read" | "email_write" | "classification";
   provider?: string | null;
   model?: string | null;
@@ -48,6 +50,7 @@ export async function recordUsage(event: UsageEventInput, deps: UsageDeps = defa
     await deps.prisma.usageEvent.create({
       data: {
         orgId: event.orgId,
+        featureKey: event.featureKey ?? null,
         kind: event.kind,
         provider: event.provider ?? null,
         model: event.model ?? null,
@@ -71,10 +74,12 @@ export async function recordLlmUsage(
   orgId: string,
   usage: LlmUsage | undefined,
   record: RecordUsageFn = recordUsage,
+  featureKey?: string,
 ): Promise<void> {
   if (!usage) return;
   await record({
     orgId,
+    featureKey,
     kind: "llm",
     provider: usage.provider,
     model: usage.model,

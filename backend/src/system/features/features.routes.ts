@@ -41,6 +41,7 @@ export const featuresRoutes: FastifyPluginAsync = async (app) => {
     if ("error" in result) {
       if (result.error === "org_not_found") return reply.status(404).send({ error: "Not found" });
       if (result.error === "unknown_feature") return reply.status(404).send({ error: "Unknown feature" });
+      if (result.error === "invalid_limits") return reply.status(400).send({ error: "Invalid limits" });
       return reply.status(400).send({ error: "Invalid config" });
     }
     return { ok: true };

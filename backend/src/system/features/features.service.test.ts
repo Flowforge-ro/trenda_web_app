@@ -18,6 +18,10 @@ function makeDeps(opts: { orgExists?: boolean; rows?: any[]; onUpsert?: (a: any)
         findMany: async () => rows,
         upsert: async (args: any) => { onUpsert?.(args); return {}; },
       },
+      // Used by listOrgFeatures -> getFeatureUsage.
+      usageEvent: { groupBy: async () => [] },
+      order: { count: async () => 0 },
+      appointment: { count: async () => 0 },
     } as any,
   };
 }
@@ -69,4 +73,36 @@ test("setOrgFeature upserts with enabled + config", async () => {
   assert.deepEqual(captured.where, { orgId_featureKey: { orgId: "O1", featureKey: "vendor_communication" } });
   assert.equal(captured.create.enabled, true);
   assert.deepEqual(captured.update.config, { channel: "email" });
+});
+
+test("setOrgFeature persists valid metric limits", async () => {
+  let captured: any;
+  const r = await setOrgFeature(
+    "O1",
+    "vendor_communication",
+    { enabled: true, limits: { orders: 100, emailsSent: 500 } },
+    makeDeps({ onUpsert: (a) => (captured = a) })
+  );
+  assert.deepEqual(r, { ok: true });
+  assert.deepEqual(captured.update.limits, { orders: 100, emailsSent: 500 });
+});
+
+test("setOrgFeature rejects a limit on a metric the feature does not declare", async () => {
+  const r = await setOrgFeature(
+    "O1",
+    "vendor_communication",
+    { enabled: true, limits: { appointments: 5 } }, // appointments is a customer metric
+    makeDeps()
+  );
+  assert.deepEqual(r, { error: "invalid_limits" });
+});
+
+test("listOrgFeatures includes limits and current-period usage", async () => {
+  const deps = makeDeps({ rows: [{ featureKey: "vendor_communication", enabled: true, config: {}, limits: { orders: 10 } }] });
+  const r = await listOrgFeatures("O1", deps);
+  const vendor = r!.find((f) => f.key === "vendor_communication")!;
+  assert.deepEqual(vendor.limits, { orders: 10 });
+  assert.equal(vendor.usage.orders.limit, 10);
+  assert.equal(vendor.usage.orders.used, 0); // fake counts return 0
+  assert.equal(vendor.usage.orders.over, false);
 });

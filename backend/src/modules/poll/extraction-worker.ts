@@ -1,6 +1,7 @@
 import { mergeMissing, type ExtractionResult } from "../../lib/extraction.js";
 import { scoreConfidence, needsReview } from "../../lib/confidence.js";
 import { recordLlmUsage } from "../../lib/usage.js";
+import { VENDOR_COMMUNICATION } from "../../features/registry.js";
 import { logError, logEvent } from "../../lib/db-log.js";
 import { logger } from "../../lib/logger.js";
 import type { Order } from "../../generated/prisma/client.js";
@@ -62,7 +63,7 @@ async function extractForOrder(order: PendingOrder, getToken: GetToken, deps: Po
     ? await deps.extractOrderInfo({ kind: "text", body: reply.body }, today, llmCtx)
     : { orderNumber: null, deliveryTime: null, deliveryEarliest: null, deliveryLatest: null, orderNumberGrounded: true, deliveryGrounded: true, status: "needs_review", isOffer: false, price: null, partCodeMismatch: false };
 
-  await recordLlmUsage(order.orgId, result.usage, deps.recordUsage);
+  await recordLlmUsage(order.orgId, result.usage, deps.recordUsage, VENDOR_COMMUNICATION);
 
   // The token is only needed for attachment fallback; fetch it lazily so a
   // text-only extraction never costs a refresh, and a failed refresh still
@@ -85,7 +86,7 @@ async function extractForOrder(order: PendingOrder, getToken: GetToken, deps: Po
     for (const { a, mime } of sources) {
       logEvent("extract.attachment", { name: a.name, mimeType: mime, byteSize: a.bytes.byteLength }, { correlationId: order.id, orgId: order.orgId });
       const attResult = await deps.extractOrderInfo({ kind: "binary", bytes: a.bytes, mimeType: mime! }, today, llmCtx);
-      await recordLlmUsage(order.orgId, attResult.usage, deps.recordUsage);
+      await recordLlmUsage(order.orgId, attResult.usage, deps.recordUsage, VENDOR_COMMUNICATION);
       result = mergeMissing(result, attResult);
       if (result.status === "extracted") break;
     }

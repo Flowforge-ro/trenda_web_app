@@ -97,7 +97,7 @@ async function pollMailbox(mailboxId: string, orders: MatchableOrder[], deps: Po
 
   const oldestCreatedAt = orders.reduce((min, o) => (o.createdAt < min ? o.createdAt : min), orders[0].createdAt);
   const base = mailbox?.lastPolledAt ?? oldestCreatedAt;
-  const { messages, newest } = await fetchMailboxMessages(deps, accessToken, base, mailbox?.orgId ?? null, mailboxId);
+  const { messages, newest } = await fetchMailboxMessages(deps, accessToken, base, mailbox?.orgId ?? null, mailboxId, VENDOR_COMMUNICATION);
 
   const byMessageId = new Map<string, MatchableOrder>();
   for (const order of orders) {

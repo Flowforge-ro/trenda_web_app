@@ -38,9 +38,13 @@ before(async () => {
       },
     },
     organizationFeature: {
-      findMany: () => Promise.resolve([{ featureKey: "vendor_communication", enabled: true, config: {} }]),
+      findMany: () => Promise.resolve([{ featureKey: "vendor_communication", enabled: true, config: {}, limits: {} }]),
       upsert: (args: any) => { lastUpsert = args; return Promise.resolve({}); },
     },
+    // listOrgFeatures -> getFeatureUsage
+    usageEvent: { groupBy: () => Promise.resolve([]) },
+    order: { count: () => Promise.resolve(0) },
+    appointment: { count: () => Promise.resolve(0) },
   };
 
   app = await buildTestApp(fakePrisma);

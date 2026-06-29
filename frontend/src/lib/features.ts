@@ -40,14 +40,33 @@ export function useHasFeature(key: string): boolean {
 // Superadmin: per-company feature administration
 // ---------------------------------------------------------------------------
 
+export interface UsageMetric {
+  key: string;
+  label: string;
+  kind: "outcome" | "resource";
+  unit?: "count" | "usd";
+}
+
+export interface MetricUsage {
+  used: number;
+  limit: number | null;
+  over: boolean;
+}
+
 export interface OrgFeature {
   key: string;
   name: string;
   description: string;
   executionType: "native" | "n8n" | "node";
+  requiresMailbox: boolean;
+  usageMetrics: UsageMetric[];
   hasConfigSchema: boolean;
   enabled: boolean;
   config: unknown;
+  /** Per-metric monthly caps (metricKey -> number). */
+  limits: Record<string, number>;
+  /** Current-month usage per metric. */
+  usage: Record<string, MetricUsage>;
 }
 
 async function fetchOrgFeatures(orgId: string): Promise<OrgFeature[]> {
@@ -69,13 +88,14 @@ export interface SetOrgFeaturePayload {
   key: string;
   enabled: boolean;
   config?: unknown;
+  limits?: Record<string, number>;
 }
 
-async function setOrgFeature({ orgId, key, enabled, config }: SetOrgFeaturePayload) {
+async function setOrgFeature({ orgId, key, enabled, config, limits }: SetOrgFeaturePayload) {
   const res = await apiFetch(`/organizations/${orgId}/features/${key}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ enabled, config }),
+    body: JSON.stringify({ enabled, config, limits }),
   });
   if (!res.ok) throw new Error("Actualizarea funcționalității a eșuat");
   return res.json();
