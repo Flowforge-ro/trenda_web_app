@@ -10,6 +10,8 @@ export default defineConfig({
     alias: {
       "@": path.resolve(__dirname, "./src"),
     },
+    // recharts is pre-bundled separately; force a single React copy so hooks work.
+    dedupe: ["react", "react-dom"],
   },
   // Proxy backend routes so the browser only ever talks to this origin.
   // This keeps the auth session cookie first-party (SameSite=Lax works in all browsers).
@@ -23,7 +25,8 @@ export default defineConfig({
       "/users": "http://localhost:3000",
       "/logs": "http://localhost:3000",
       "/appointments": "http://localhost:3000",
-      "/usage": "http://localhost:3000"
+      "/usage": "http://localhost:3000",
+      "/analytics": "http://localhost:3000"
     },
   },
   test: {

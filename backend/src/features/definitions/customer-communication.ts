@@ -14,8 +14,8 @@ export const customerCommunication: FeatureDefinition = {
   executionType: "native",
   requiresMailbox: true,
   usageMetrics: [
-    { key: "appointments", label: "Programări", kind: "outcome", unit: "count" },
-    { key: "emailsSent", label: "Emailuri trimise", kind: "resource", unit: "count" },
+    { key: "appointments", label: "Programări", kind: "outcome", unit: "count", clientVisible: true },
+    { key: "emailsSent", label: "Emailuri trimise", kind: "resource", unit: "count", clientVisible: true },
     { key: "llmCostUsd", label: "Cost AI (USD)", kind: "resource", unit: "usd" },
   ],
 };

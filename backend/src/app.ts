@@ -19,6 +19,7 @@ import { appointmentsRoutes } from "./modules/appointments/appointments.routes.j
 import { usageRoutes } from "./system/usage/usage.routes.js";
 import { logsRoutes } from "./system/logs/logs.routes.js";
 import { featuresRoutes } from "./system/features/features.routes.js";
+import { analyticsRoutes } from "./modules/analytics/analytics.routes.js";
 
 const isProd = process.env.NODE_ENV === "production";
 
@@ -105,6 +106,7 @@ await app.register(appointmentsRoutes);
 await app.register(usageRoutes);
 await app.register(logsRoutes);
 await app.register(featuresRoutes);
+await app.register(analyticsRoutes);
 
 // Global error handler: the full error is logged server-side; the client only ever
 // gets the generic status reason phrase ("Bad Request", "Internal Server Error", ...),

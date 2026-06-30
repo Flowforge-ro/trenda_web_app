@@ -17,11 +17,18 @@ import { Button } from "@/components/ui/button";
 import { useOrders, useResendOrder, useCloseOrder, formatDeliveryCountdown, type Order } from "@/lib/orders";
 import { useIsMobile } from "@/lib/use-is-mobile";
 
+// Order.status as the backend actually sets it: the default plus the two
+// extraction outcomes. There is no delivery/cancellation tracking (we have no
+// courier or supplier-cancel signal), so no "delivered"/"cancelled" states exist.
 const statusStyles: Record<string, string> = {
-  "Livrat": "bg-success/10 text-success",
-  "În tranzit": "bg-warning/10 text-warning",
   "În așteptare": "bg-muted text-muted-foreground",
-  "Anulat": "bg-error/10 text-error",
+  extracted: "bg-blue-100 text-blue-700",
+  needs_review: "bg-warning/10 text-warning",
+};
+const statusLabels: Record<string, string> = {
+  "În așteptare": "În așteptare",
+  extracted: "Ofertă primită",
+  needs_review: "De verificat",
 };
 
 function StatusBadge({ status }: { status: string }) {
@@ -32,7 +39,7 @@ function StatusBadge({ status }: { status: string }) {
         statusStyles[status] ?? "bg-muted text-muted-foreground"
       )}
     >
-      {status}
+      {statusLabels[status] ?? status}
     </span>
   );
 }

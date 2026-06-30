@@ -7,6 +7,7 @@ import { LoginPage } from "./pages/login";
 import { OrdersPage } from "./pages/orders";
 import { AppointmentsPage } from "./pages/appointments";
 import { SettingsPage } from "./pages/settings";
+import { AnalyticsPage } from "./pages/analytics";
 import { SuperadminPanel } from "./pages/admin";
 import { AppLayout } from "./components/layout/app-layout";
 
@@ -48,6 +49,7 @@ function App() {
           >
             <Route path="/" element={<FeatureRoute feature={FEATURE.vendorCommunication}><OrdersPage /></FeatureRoute>} />
             <Route path="/programari" element={<FeatureRoute feature={FEATURE.customerCommunication}><AppointmentsPage /></FeatureRoute>} />
+            <Route path="/statistici" element={<AnalyticsPage />} />
             <Route path="/setari" element={<SettingsPage />} />
           </Route>
         </Routes>

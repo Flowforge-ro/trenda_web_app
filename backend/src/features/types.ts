@@ -21,6 +21,12 @@ export interface UsageMetric {
   kind: "outcome" | "resource";
   /** Display hint: "count" (default) or "usd". */
   unit?: "count" | "usd";
+  /**
+   * Whether the metric may be shown to the customer in their own analytics. Value
+   * + activity metrics (orders, appointments, emails) are visible; internal cost
+   * mechanics (LLM spend) are not — customers never see execution/cost internals.
+   */
+  clientVisible?: boolean;
 }
 
 /**
