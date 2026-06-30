@@ -1,7 +1,12 @@
 import { prisma } from "../../prisma.js";
-import { currentMonthWindow, type DateWindow } from "../../system/quota/quota.service.js";
+import {
+  currentMonthWindow,
+  OUTCOME_MODELS,
+  RESOURCE_METRICS,
+  type DateWindow,
+} from "../../system/quota/quota.service.js";
 import { getEnabledFeatures } from "../../system/features/feature-access.js";
-import { getFeature, VENDOR_COMMUNICATION, CUSTOMER_COMMUNICATION } from "../../features/registry.js";
+import { getFeature } from "../../features/registry.js";
 
 /**
  * Customer-facing analytics: what value the product delivered to *one* org this
@@ -51,18 +56,6 @@ function dayBuckets(w: DateWindow): string[] {
   return days;
 }
 
-/**
- * Outcome rows (createdAt only) per feature, read from domain tables. Lives here,
- * not in the registry, so the feature layer stays free of domain deps (mirrors
- * quota.service).
- */
-const outcomeRows: Record<string, (p: typeof prisma, orgId: string, w: DateWindow) => Promise<{ createdAt: Date }[]>> = {
-  [VENDOR_COMMUNICATION]: (p, orgId, w) =>
-    p.order.findMany({ where: { orgId, createdAt: { gte: w.gte, lte: w.lte } }, select: { createdAt: true } }),
-  [CUSTOMER_COMMUNICATION]: (p, orgId, w) =>
-    p.appointment.findMany({ where: { orgId, createdAt: { gte: w.gte, lte: w.lte } }, select: { createdAt: true } }),
-};
-
 export async function getClientAnalytics(
   orgId: string,
   window: DateWindow = currentMonthWindow(),
@@ -78,35 +71,41 @@ export async function getClientAnalytics(
     if (!def || clientMetrics.length === 0) continue;
 
     // Per-day accumulator, seeded with every bucket at 0 so the chart is gap-free.
+    // Each metric is aggregated from the same shared resolvers quota.service uses
+    // (OUTCOME_MODELS / RESOURCE_METRICS), so analytics can never drift from the
+    // superadmin quota view and any new client-visible metric is handled here too.
     const byDay: Record<string, Record<string, number>> = {};
     for (const d of buckets) byDay[d] = Object.fromEntries(clientMetrics.map((m) => [m.key, 0]));
-    const totals: Record<string, number> = Object.fromEntries(clientMetrics.map((m) => [m.key, 0]));
+    const add = (metricKey: string, at: Date, amount: number) => {
+      const d = dayKey(at);
+      if (byDay[d]) byDay[d][metricKey] += amount;
+    };
 
     for (const metric of clientMetrics) {
       if (metric.kind === "outcome") {
-        const rows = (await outcomeRows[key]?.(deps.prisma, orgId, window)) ?? [];
-        for (const r of rows) {
-          const d = dayKey(r.createdAt);
-          if (byDay[d]) byDay[d][metric.key] += 1;
-          totals[metric.key] += 1;
-        }
-      } else if (metric.key === "emailsSent") {
+        const rows = (await OUTCOME_MODELS[key]?.rows(deps.prisma, orgId, window)) ?? [];
+        for (const r of rows) add(metric.key, r.createdAt, 1);
+      } else {
+        const res = RESOURCE_METRICS[metric.key];
+        if (!res) continue; // a client-visible resource metric with no aggregation rule
         const rows = await deps.prisma.usageEvent.findMany({
-          where: { orgId, featureKey: key, kind: "email_write", createdAt: { gte: window.gte, lte: window.lte } },
-          select: { createdAt: true, emails: true },
+          where: { orgId, featureKey: key, kind: res.kind, createdAt: { gte: window.gte, lte: window.lte } },
+          select: { createdAt: true, emails: true, costUsd: true },
         });
-        for (const r of rows) {
-          const d = dayKey(r.createdAt);
-          if (byDay[d]) byDay[d][metric.key] += r.emails;
-          totals[metric.key] += r.emails;
-        }
+        for (const r of rows) add(metric.key, r.createdAt, r[res.field]);
       }
     }
 
     features.push({
       key,
       name: def.name,
-      metrics: clientMetrics.map((m) => ({ key: m.key, label: m.label, unit: m.unit ?? "count", total: totals[m.key] })),
+      // Totals are derived from the buckets — one source of truth with the chart.
+      metrics: clientMetrics.map((m) => ({
+        key: m.key,
+        label: m.label,
+        unit: m.unit ?? "count",
+        total: buckets.reduce((sum, d) => sum + byDay[d][m.key], 0),
+      })),
       trend: buckets.map((d) => ({ date: d, values: byDay[d] })),
     });
   }
