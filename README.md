@@ -1,4 +1,4 @@
-# Trenda
+# Trendo web app for client
 
 Order-tracking app that connects Microsoft (Outlook) mailboxes, sends supplier order emails, polls replies, and extracts delivery status with an LLM.
 
